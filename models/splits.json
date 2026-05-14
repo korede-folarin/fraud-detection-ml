@@ -1,0 +1,5 @@
+{
+    "train_idx": 199364,
+    "validate_idx": 242085,
+    "total_rows": 284807
+}
