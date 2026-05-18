@@ -1,0 +1,98 @@
+{
+    "dataset": {
+        "total_transactions": 284807,
+        "total_fraud": 492,
+        "fraud_rate": 0.00173,
+        "observation_window": "48 hours"
+    },
+    "splits": {
+        "train": {
+            "rows": 199364,
+            "fraud_rate": 0.00193
+        },
+        "validate": {
+            "rows": 42721,
+            "fraud_rate": 0.00131
+        },
+        "test": {
+            "rows": 42722,
+            "fraud_rate": 0.00122
+        }
+    },
+    "champion_model": "XGBoost",
+    "champion_rationale": [
+        "Best score calibration (mean=0.16% vs true rate 0.13%)",
+        "Perfect precision at optimal threshold (zero false alarms)",
+        "Most operationally viable at business cost threshold",
+        "Expected to outperform with hyperparameter tuning"
+    ],
+    "test_set_performance": {
+        "Logistic Regression": {
+            "KS": 0.8568,
+            "AUPRC": 0.6965,
+            "F1": 0.7865,
+            "Precision": 0.9459,
+            "Recall": 0.6731,
+            "threshold": 1.0
+        },
+        "Random Forest": {
+            "KS": 0.8403,
+            "AUPRC": 0.7703,
+            "F1": 0.8352,
+            "Precision": 0.9744,
+            "Recall": 0.7308,
+            "threshold": 0.6609
+        },
+        "XGBoost": {
+            "KS": 0.8258,
+            "AUPRC": 0.7632,
+            "F1": 0.8315,
+            "Precision": 1.0,
+            "Recall": 0.7115,
+            "threshold": 0.9964
+        }
+    },
+    "business_threshold": {
+        "value": 0.0784,
+        "cost_fn": 150,
+        "cost_fp": 10,
+        "estimated_cost": 1420,
+        "recall_at_threshold": 0.875,
+        "precision_at_threshold": 0.57
+    },
+    "concept_drift_evidence": {
+        "hour_2_fraud_rate": 0.017,
+        "hour_26_fraud_rate": 0.032,
+        "drift_magnitude": "88% increase day over day"
+    },
+    "top_features": {
+        "SHAP": [
+            "V4",
+            "V14",
+            "V12",
+            "V10",
+            "V11"
+        ],
+        "IV": [
+            "V14",
+            "V12",
+            "V17",
+            "V10",
+            "V4"
+        ],
+        "XGB_gain": [
+            "V14",
+            "V10",
+            "V4",
+            "V12",
+            "V20"
+        ]
+    },
+    "production_recommendations": [
+        "Retrain with TimeSeriesSplit hyperparameter tuning",
+        "Implement per-customer velocity features via feature store",
+        "Extend observation window to 12-24 months",
+        "Monitor PSI weekly on top features",
+        "Set KS alert threshold at 0.75 for retraining trigger"
+    ]
+}
