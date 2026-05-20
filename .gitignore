@@ -1,25 +1,23 @@
-# Data
+# artifacts — generated files, not source code
+artifacts/
+
+# data
 data/
 *.csv
-*.xls
-*.xlsx
 
-# Environment
+# models
+models/
+*.pkl
+
+# environment
 venv/
-env/
-
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb_checkpoints
-
-# Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-*.egg-info/
-dist/
-build/
+.ipynb_checkpoints/
+
+# logs
+logs/
+*.log
 
 # MLflow
 mlruns/
@@ -31,8 +29,3 @@ mlartifacts/
 # OS
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
-logs/
-models/*.pkl
