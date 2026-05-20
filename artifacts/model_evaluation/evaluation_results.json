@@ -1,0 +1,123 @@
+{
+    "validate": {
+        "Logistic Regression": {
+            "KS": 0.9223,
+            "AUPRC": 0.8324,
+            "F1": 0.8113,
+            "Precision": 0.86,
+            "Recall": 0.7679,
+            "F1_threshold": 1.0,
+            "Business_threshold": 0.9931,
+            "Business_cost": 1610.0,
+            "TP": 43,
+            "FP": 7,
+            "TN": 42658,
+            "FN": 13,
+            "Fraud_catch_rate": 0.7679
+        },
+        "Random Forest": {
+            "KS": 0.9205,
+            "AUPRC": 0.8669,
+            "F1": 0.8713,
+            "Precision": 0.9778,
+            "Recall": 0.7857,
+            "F1_threshold": 0.4603,
+            "Business_threshold": 0.2246,
+            "Business_cost": 1390.0,
+            "TP": 44,
+            "FP": 1,
+            "TN": 42664,
+            "FN": 12,
+            "Fraud_catch_rate": 0.7857
+        },
+        "XGBoost": {
+            "KS": 0.9265,
+            "AUPRC": 0.8739,
+            "F1": 0.8713,
+            "Precision": 0.9778,
+            "Recall": 0.7857,
+            "F1_threshold": 0.9311,
+            "Business_threshold": 0.0716,
+            "Business_cost": 1210.0,
+            "TP": 44,
+            "FP": 1,
+            "TN": 42664,
+            "FN": 12,
+            "Fraud_catch_rate": 0.7857
+        }
+    },
+    "test": {
+        "Logistic Regression": {
+            "KS": 0.8568,
+            "AUPRC": 0.6965,
+            "F1": 0.7865,
+            "Precision": 0.9459,
+            "Recall": 0.6731,
+            "F1_threshold": 1.0,
+            "Business_threshold": 0.9995,
+            "Business_cost": 2150.0,
+            "TP": 35,
+            "FP": 2,
+            "TN": 42668,
+            "FN": 17,
+            "Fraud_catch_rate": 0.6731
+        },
+        "Random Forest": {
+            "KS": 0.8432,
+            "AUPRC": 0.7748,
+            "F1": 0.8478,
+            "Precision": 0.975,
+            "Recall": 0.75,
+            "F1_threshold": 0.5871,
+            "Business_threshold": 0.5871,
+            "Business_cost": 1960.0,
+            "TP": 39,
+            "FP": 1,
+            "TN": 42669,
+            "FN": 13,
+            "Fraud_catch_rate": 0.75
+        },
+        "XGBoost": {
+            "KS": 0.805,
+            "AUPRC": 0.7597,
+            "F1": 0.8315,
+            "Precision": 1.0,
+            "Recall": 0.7115,
+            "F1_threshold": 0.9929,
+            "Business_threshold": 0.9082,
+            "Business_cost": 2000.0,
+            "TP": 37,
+            "FP": 0,
+            "TN": 42670,
+            "FN": 15,
+            "Fraud_catch_rate": 0.7115
+        }
+    },
+    "champion": {
+        "model": "XGBoost",
+        "rationale": [
+            "Best F1 and Precision at optimal threshold",
+            "Best score calibration (mean score \u2248 true fraud rate)",
+            "Zero false positives at F1 optimal threshold",
+            "Most operationally viable at business cost threshold"
+        ],
+        "test_metrics": {
+            "KS": 0.805,
+            "AUPRC": 0.7597,
+            "F1": 0.8315,
+            "Precision": 1.0,
+            "Recall": 0.7115,
+            "F1_threshold": 0.9929,
+            "Business_threshold": 0.9082,
+            "Business_cost": 2000.0,
+            "TP": 37,
+            "FP": 0,
+            "TN": 42670,
+            "FN": 15,
+            "Fraud_catch_rate": 0.7115
+        },
+        "business_threshold": 0.0784,
+        "cost_fn": 150,
+        "cost_fp": 10
+    }
+}

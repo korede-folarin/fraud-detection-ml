@@ -1,0 +1,48 @@
+logistic_regression:
+  class_weight: balanced
+  max_iter: 1000
+  C: 0.1
+  solver: lbfgs
+  random_state: 42
+
+random_forest:
+  n_estimators: 200
+  max_depth: 10
+  min_samples_split: 10
+  min_samples_leaf: 5
+  max_features: sqrt
+  class_weight: balanced
+  random_state: 42
+  n_jobs: -1
+
+xgboost:
+  n_estimators: 200
+  max_depth: 6
+  learning_rate: 0.1
+  subsample: 0.8
+  colsample_bytree: 0.8
+  min_child_weight: 5
+  gamma: 1
+  random_state: 42
+  eval_metric: aucpr
+  n_jobs: -1
+
+data_transformation:
+  train_ratio: 0.70
+  validate_ratio: 0.85
+  rolling_window: 100
+  rolling_min_periods: 1
+  iv_threshold: 0.1
+  amount_log_base: 1        # log1p base — 1 means log(x+1)
+  seconds_per_hour: 3600    # converts Time seconds to hours
+  features_to_drop:
+    - Time
+    - Amount
+    - rolling_fraud_density
+    - rolling_txn_count
+    - rolling_avg_amount
+    - V26
+business_cost:
+  cost_false_negative: 150
+  cost_false_positive: 10
+  business_threshold: 0.0784
