@@ -18,7 +18,7 @@ regulated UK financial institutions.
 **Out-of-Time Validation (70/15/15)**
 Random train/test splits are the most common source of optimistic bias in 
 fraud ML. When future transactions appear in training data, the model learns 
-patterns it could never have seen in production — inflating reported 
+patterns it could never have seen in production ; inflating reported 
 performance and producing models that degrade immediately on deployment.
 
 I enforced strict temporal ordering: train on the earliest 70% of 
@@ -26,7 +26,7 @@ transactions, validate on the next 15%, test on the final 15%. This mirrors
 FCA model risk guidance and produces performance estimates that reflect 
 genuine out-of-sample capability.
 
-*Impact: Test set fraud rate (0.122%) diverged from train (0.193%) — 
+*Impact: Test set fraud rate (0.122%) diverged from train (0.193%) ; 
 confirming the split captured a genuine distributional shift rather than 
 a statistical artefact.*
 
@@ -35,12 +35,12 @@ Correlation measures linear relationships. Fraud is not linear. Relying on
 correlation alone systematically undervalues features with complex, 
 non-monotonic relationships to the target.
 
-I applied optimal binning independently on the training set — never 
-touching validate or test data — to calculate Information Value for all 
+I applied optimal binning independently on the training set ; never 
+touching validate or test data ; to calculate Information Value for all 
 features. This revealed V14 (IV=4.48) and V12 (IV=4.05) as dominant 
 predictors, and exposed Amount's U-shaped fraud profile: high fraud 
 concentration below £1.19 (card testing) and above £237 (account takeover) 
-— a pattern completely invisible to correlation analysis.
+; a pattern completely invisible to correlation analysis.
 
 *Impact: Features that correlation ranked as moderate (V14 r=-0.30) were 
 revealed by IV as the strongest predictors in the dataset. Feature selection 
@@ -48,13 +48,13 @@ based on IV reduced dimensionality from 34 to 30 features with principled
 justification rather than arbitrary cutoffs.*
 
 **class_weight over SMOTE**
-Class imbalance in fraud detection is extreme — 492 fraud cases against 
+Class imbalance in fraud detection is extreme ; 492 fraud cases against 
 284,315 legitimate transactions. The instinct to rebalance via SMOTE is 
 understandable but counterproductive at this ratio: synthetic fraud patterns 
 fabricated by interpolation do not exist in production, and a model trained 
 on them learns a distribution that will never appear in live data.
 
-I handled imbalance natively within each model instead — preserving the 
+I handled imbalance natively within each model instead ; preserving the 
 real training distribution while correcting for class frequency:
 
 - Logistic Regression → class_weight='balanced' (automatic ratio adjustment)
@@ -65,7 +65,7 @@ All three approaches penalise missed fraud proportionally to its rarity
 without distorting the data the models learn from.
 
 *Impact: XGBoost mean fraud score of 0.16% closely matched the true 
-validate fraud rate of 0.131% — indicating well-calibrated probability 
+validate fraud rate of 0.131% ; indicating well-calibrated probability 
 outputs that reflect the actual fraud distribution rather than an 
 artificially rebalanced one.*
 
@@ -74,7 +74,7 @@ F1 score treats false positives and false negatives as equally costly.
 In fraud detection they are not. Missing a £150 fraud transaction costs 
 15x more than a £10 false alarm investigation.
 
-F1 optimisation produced a threshold of 0.9041 — the model flags only 
+F1 optimisation produced a threshold of 0.9041 ; the model flags only 
 when 90% confident, achieving precision of 97.8% but recall of only 78.6%. 
 Business cost analysis shifted the optimal threshold to 0.0784, improving 
 recall to 87.5% and reducing total financial exposure by £390 per operating 
@@ -90,24 +90,24 @@ operating point.*
 **Champion-Challenger Model Development**
 Regulatory best practice in UK banking requires model developers to 
 benchmark candidate models under identical conditions and articulate 
-a defensible rationale for champion selection — not simply deploy 
+a defensible rationale for champion selection ; not simply deploy 
 the most complex model available.
 
 I trained three models under identical out-of-time conditions:
 Logistic Regression as the interpretable FCA-aligned baseline, 
 Random Forest as the ensemble benchmark, and XGBoost as the 
 industry-standard fraud detection approach. Hyperparameters were 
-set based on domain knowledge rather than cross-validation tuning — 
+set based on domain knowledge rather than cross-validation tuning ; 
 standard cross-validation violates the temporal independence assumption 
 of transaction data, and RandomizedSearchCV on 284,807 rows with 
 TimeSeriesSplit risks overfitting hyperparameters to the specific 
 fraud patterns present in this 48-hour window rather than generalising 
 to the broader fraud distribution. Champion selection was driven by 
-KS statistic and AUPRC — metrics that evaluate discrimination across 
+KS statistic and AUPRC ; metrics that evaluate discrimination across 
 all operating thresholds rather than at a single point.
 
 *Impact: XGBoost was selected as champion on the basis of superior 
-KS (0.924) and AUPRC (0.869) — threshold-independent metrics that 
+KS (0.924) and AUPRC (0.869) ; threshold-independent metrics that 
 reflect genuine discrimination capability. Random Forest's marginally 
 higher F1 (0.880 vs 0.871) at a single threshold was judged unlikely 
 to generalise to production volumes, where its perfect precision 
@@ -115,9 +115,9 @@ of 1.0 on a 42,000-row validate set would degrade.*
 
 **Velocity Features - Production Design Considerations**
 Rolling transaction features were engineered and their IV calculated. 
-Global rolling windows produced near-zero IV (0.000—0.115) because 
+Global rolling windows produced near-zero IV (0.000;0.115) because 
 without customer identifiers, rolling statistics mix different customers' 
-transaction histories — producing features that are mathematically valid 
+transaction histories ; producing features that are mathematically valid 
 but behaviourally meaningless.
 
 In production, velocity features are computed per customer via a feature 
@@ -143,12 +143,12 @@ expect material improvement in model discrimination.*
 | Model | KS | AUPRC | F1 (statistical) | Threshold (business) |
 |-------|----|-------|------------------|---------------------|
 | XGBoost | 0.924 | 0.869 | 0.871 | 0.0784 |
-| Random Forest | 0.903 | 0.866 | 0.880 | — |
-| Logistic Regression | 0.922 | 0.832 | 0.811 | — |
+| Random Forest | 0.903 | 0.866 | 0.880 | ; |
+| Logistic Regression | 0.922 | 0.832 | 0.811 | ; |
 
 All three models achieved KS > 0.90. By UK banking standards 
 (KS > 0.40 = good, > 0.80 = excellent), this represents exceptional 
-discrimination across all approaches — a result of rigorous feature 
+discrimination across all approaches ; a result of rigorous feature 
 engineering and temporal validation rather than model complexity alone.
 
 ---
@@ -159,7 +159,7 @@ BentoML · Apache Airflow · MLflow · Streamlit · Docker
 ---
 
 ## Dataset
-Credit Card Fraud Detection — ULB Machine Learning Group
+Credit Card Fraud Detection ; ULB Machine Learning Group
 👉 kaggle.com/datasets/mlg-ulb/creditcardfraud
 
 Place `creditcard.csv` in `data/` folder before running notebooks.
