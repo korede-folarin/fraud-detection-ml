@@ -5,6 +5,7 @@ import pandas as pd
 import mlflow
 import mlflow.xgboost
 import mlflow.sklearn
+import dagshub
 from pathlib import Path
 from sklearn.metrics import (
     precision_recall_curve,
@@ -170,6 +171,12 @@ class ModelEvaluation:
         Runs full model evaluation pipeline:
         load models → evaluate on validate and test → log to MLflow → save results
         """
+        # initialise DagsHub for remote MLflow tracking
+        dagshub.init(repo_owner='korede-folarin',
+                     repo_name='fraud-detection-ml',
+                     mlflow=True)
+
+        logger.info("MLflow tracking initialised via DagsHub")
         logger.info("="*50)
         logger.info("Starting Model Evaluation")
         logger.info("="*50)
@@ -196,29 +203,24 @@ class ModelEvaluation:
 
         results = {'validate': {}, 'test': {}}
 
-        # evaluate on validate and test
         for model_name, model in models.items():
             logger.info(f"Evaluating {model_name}...")
 
-            # validate set
             val_metrics = self.evaluate_model(
                 model_name, model,
                 X_validate, X_val_scaled, y_validate
             )
             results['validate'][model_name] = val_metrics
 
-            # test set
             test_metrics = self.evaluate_model(
                 model_name, model,
                 X_test, X_test_scaled, y_test
             )
             results['test'][model_name] = test_metrics
 
-            # log to mlflow
             self.log_to_mlflow(model_name, model, val_metrics, 'validate')
             self.log_to_mlflow(model_name, model, test_metrics, 'test')
 
-        # champion selection
         xgb_test = results['test']['XGBoost']
         results['champion'] = {
             'model': 'XGBoost',
@@ -234,11 +236,10 @@ class ModelEvaluation:
             'cost_fp': self.config.cost_false_positive
         }
 
-        # save results
         os.makedirs(self.config.root_dir, exist_ok=True)
         save_json(Path(self.config.evaluation_results), results)
 
         logger.info(f"Evaluation results saved to: {self.config.evaluation_results}")
-        logger.info("Model Evaluation Complete ")
+        logger.info("Model Evaluation Complete")
 
         return results
