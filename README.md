@@ -153,6 +153,20 @@ engineering and temporal validation rather than model complexity alone.
 
 ---
 
+## Experiment Tracking
+
+All model runs tracked via MLflow on DagsHub:
+👉 https://dagshub.com/korede-folarin/fraud-detection-ml
+
+Includes:
+- KS, AUPRC, F1, Precision, Recall per model per dataset
+- Business cost threshold per run
+- Model artifacts saved per run
+- Champion-challenger comparison across validate and test sets
+
+
+---
+
 ## Production Stack (In Progress)
 BentoML · Apache Airflow · MLflow · Streamlit · Docker
 
