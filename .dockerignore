@@ -1,0 +1,44 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Astro
+.astro/
+airflow_settings.yaml
+airflow.db
+airflow.cfg
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+
+# Logs
+logs/
+
+# Data and artifacts
+artifacts/
+
+mlruns/
+
+# Notebooks
+notebooks/
+
+# Models
+models/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/

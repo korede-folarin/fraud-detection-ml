@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "frauddetection"
+version = "0.0.1"
+authors = [
+  {name = "korede-folarin", email = "your-email@email.com"}
+]
+description = "Banking ML Risk Pipeline — Fraud Detection"
+
+[tool.setuptools.packages.find]
+where = ["src"]

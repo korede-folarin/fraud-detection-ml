@@ -172,9 +172,11 @@ class ModelEvaluation:
         load models → evaluate on validate and test → log to MLflow → save results
         """
         # initialise DagsHub for remote MLflow tracking
-        dagshub.init(repo_owner='korede-folarin',
-                     repo_name='fraud-detection-ml',
-                     mlflow=True)
+        os.environ['MLFLOW_TRACKING_URI'] = 'https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow'
+        os.environ['MLFLOW_TRACKING_USERNAME'] = 'korede-folarin'
+        os.environ['MLFLOW_TRACKING_PASSWORD'] = os.getenv('DAGSHUB_TOKEN')
+
+        mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
 
         logger.info("MLflow tracking initialised via DagsHub")
         logger.info("="*50)
