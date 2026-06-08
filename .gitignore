@@ -1,9 +1,7 @@
 # artifacts — generated files, not source code
 artifacts/
 .env
-# data
-data/
-*.csv
+
 
 # models
 models/
