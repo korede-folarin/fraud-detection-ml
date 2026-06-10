@@ -1,7 +1,7 @@
 # artifacts — generated files, not source code
 artifacts/
 .env
-
+.requirements.txt
 
 # models
 models/
