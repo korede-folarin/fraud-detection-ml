@@ -121,14 +121,22 @@ st.markdown("""
 # ─────────────────────────────────────────────
 # DATA LOADING
 # ─────────────────────────────────────────────
-@st.cache_data(ttl=300)  # refresh every 5 minutes
+@st.cache_data(ttl=300)
 def load_results():
-    path = Path("artifacts/model_evaluation/evaluation_results.json")
-    if path.exists():
-        with open(path) as f:
+    # local development
+    local_path = Path("artifacts/model_evaluation/evaluation_results.json")
+    if local_path.exists():
+        with open(local_path) as f:
             return json.load(f)
-    return None
-
+    
+    # production — fetch from GitHub
+    import urllib.request
+    url = "https://raw.githubusercontent.com/korede-folarin/fraud-detection-ml/main/artifacts/model_evaluation/evaluation_results.json"
+    try:
+        with urllib.request.urlopen(url) as response:
+            return json.load(response)
+    except:
+        return None
 results = load_results()
 
 PLOT_CONFIG = dict(
