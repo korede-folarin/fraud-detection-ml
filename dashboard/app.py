@@ -121,24 +121,27 @@ st.markdown("""
 # ─────────────────────────────────────────────
 # DATA LOADING
 # ─────────────────────────────────────────────
+import mlflow
+import os
+
 @st.cache_data(ttl=300)
 def load_results():
-    import mlflow
-    import os
-    
-    os.environ['MLFLOW_TRACKING_URI'] = 'https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow'
-    os.environ['MLFLOW_TRACKING_USERNAME'] = 'korede-folarin'
-    os.environ['MLFLOW_TRACKING_PASSWORD'] = st.secrets["2b28ec87c94248199a63df09406346c520efa243"]
-    
-    mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
-    
-    client = mlflow.tracking.MlflowClient()
-    # fetch latest runs
-    experiment = client.get_experiment_by_name("Fraud-Detection-Champion-Challenger")
-    runs = client.search_runs(experiment.experiment_id, order_by=["start_time DESC"])
-    
-    return runs
+    # local development
+    local_path = Path("artifacts/model_evaluation/evaluation_results.json")
+    if local_path.exists():
+        with open(local_path) as f:
+            return json.load(f)
 
+    # production — read from GitHub raw
+    import urllib.request
+    url = "https://raw.githubusercontent.com/korede-folarin/fraud-detection-ml/main/artifacts/model_evaluation/evaluation_results.json"
+    try:
+        with urllib.request.urlopen(url) as response:
+            return json.load(response)
+    except:
+        return None
+
+results = load_results()
 PLOT_CONFIG = dict(
     paper_bgcolor='#161b22',
     plot_bgcolor='#0d1117',
