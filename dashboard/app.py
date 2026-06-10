@@ -121,8 +121,7 @@ st.markdown("""
 # ─────────────────────────────────────────────
 # DATA LOADING
 # ─────────────────────────────────────────────
-import mlflow
-import os
+
 
 @st.cache_data(ttl=300)
 def load_results():
