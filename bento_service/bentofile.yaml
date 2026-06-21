@@ -1,0 +1,19 @@
+service: "service:FraudDetectionService"
+
+labels:
+  project: fraud-detection-ml
+  stage: champion
+
+include:
+  - "service.py"
+
+python:
+  packages:
+    - pandas
+    - scikit-learn
+    - xgboost
+    - shap
+    - pydantic
+
+docker:
+  python_version: "3.11"
