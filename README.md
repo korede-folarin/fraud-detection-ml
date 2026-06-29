@@ -1,7 +1,24 @@
+# Fraud Detection Pipeline with Explainable Decisioning
 
+*A UK banking-standard fraud detection pipeline with real-time,
+transaction-level fraud decision explanations*
 
-A UK banking-standard fraud detection pipeline with real-time,
-transaction-level explainability
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![XGBoost](https://img.shields.io/badge/XGBoost-Champion_Model-orange)
+![BentoML](https://img.shields.io/badge/BentoML-REST_API-green)
+![Docker](https://img.shields.io/badge/Docker-Containerised-blue)
+![Airflow](https://img.shields.io/badge/Apache_Airflow-Orchestration-017CEE)
+![MLflow](https://img.shields.io/badge/MLflow-Experiment_Tracking-0194E2)
+![SHAP](https://img.shields.io/badge/SHAP-Explainability-red)
+![Streamlit](https://img.shields.io/badge/Streamlit-Live_Dashboard-FF4B4B)
+![DVC](https://img.shields.io/badge/DVC-Data_Versioning-945DD6)
+
+## Links
+
+- **Live Dashboard:** https://kf-fraud-detection-ml.streamlit.app
+- **GitHub Repository:** https://github.com/korede-folarin/fraud-detection-ml
+- **MLflow Experiments:** https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow
+
 
 Overview
 
