@@ -25,3 +25,8 @@ model_evaluation:
   test_data_path: artifacts/data_transformation/test_transformed.pkl
   evaluation_results: artifacts/model_evaluation/evaluation_results.json
   mlflow_uri: https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow
+  raw_data_path: artifacts/data_ingestion/raw_data.csv
+  train_data_path: artifacts/data_transformation/X_train.pkl
+  iv_rankings_path: artifacts/data_transformation/iv_rankings.csv
+  dashboard_data: artifacts/model_evaluation/dashboard_data.json
+  demo_assets_dir: dashboard/assets

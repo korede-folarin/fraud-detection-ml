@@ -1,7 +1,10 @@
+"""
+Registers the champion model in the BentoML model store
+Run from the repository root: python bento_service/save_model.py
+"""
 import bentoml
 import pickle
 import json
-import shap
 
 # load the champion model
 with open("artifacts/model_trainer/models/xgboost.pkl", "rb") as f:
@@ -18,17 +21,13 @@ with open("artifacts/model_evaluation/evaluation_results.json") as f:
 champion = results["champion"]
 xgb_test = results["test"]["XGBoost"]
 
-# build a SHAP TreeExplainer once at save-time
-# TreeExplainer is fast — exact for tree models, no sampling needed
-explainer = shap.TreeExplainer(model)
-
-# save to BentoML model store
+# SHAP values come from XGBoost's native pred_contribs at request time
+# (exact TreeSHAP), so no explainer object needs to be stored
 bento_model = bentoml.xgboost.save_model(
     "fraud_xgboost",
     model,
     custom_objects={
         "feature_names": features,
-        "shap_explainer": explainer,
     },
     metadata={
         "ks": xgb_test["KS"],

@@ -45,4 +45,5 @@ data_transformation:
 business_cost:
   cost_false_negative: 150
   cost_false_positive: 10
-  business_threshold: 0.0784
+  # no fixed deployment threshold here: model evaluation picks the
+  # cost-optimal threshold on validate, then applies it unchanged to test

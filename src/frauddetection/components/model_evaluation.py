@@ -2,20 +2,24 @@ import os
 import json
 import numpy as np
 import pandas as pd
-import mlflow
-import mlflow.xgboost
-import mlflow.sklearn
-import dagshub
 from pathlib import Path
 from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score,
-    f1_score, precision_score,
+    precision_score,
     recall_score, confusion_matrix
 )
 from frauddetection import logger
 from frauddetection.entity.config_entity import ModelEvaluationConfig
 from frauddetection.utils.common import save_json, load_object
+
+
+def floor_6dp(threshold):
+    """
+    Rounds a threshold down for storage — rounding up would silently stop
+    flagging the transaction that sits exactly on the threshold
+    """
+    return float(np.floor(threshold * 1e6) / 1e6)
 
 
 class ModelEvaluation:
@@ -42,18 +46,39 @@ class ModelEvaluation:
         return ks_stat, ks_threshold
 
     def find_best_f1_threshold(self, y_true, y_prob):
-        """h
+        """
         Finds threshold that maximises F1 score
         F1 = harmonic mean of precision and recall
         Used for statistical threshold optimisation
         """
         precision, recall, thresholds = precision_recall_curve(y_true, y_prob)
+        precision, recall = precision[:-1], recall[:-1]
         f1_scores    = 2 * (precision * recall) / (precision + recall + 1e-10)
         best_idx     = f1_scores.argmax()
-        best_f1      = f1_scores[best_idx]
-        best_threshold = thresholds[best_idx] if best_idx < len(thresholds) else thresholds[-1]
 
-        return best_f1, best_threshold
+        return f1_scores[best_idx], thresholds[best_idx]
+
+    def threshold_sweep(self, y_true, y_prob):
+        """
+        Exact confusion counts at every distinct score threshold
+        Rule: flag when score >= threshold
+        Returns DataFrame with threshold, tp, fp, fn, cost
+        """
+        y_true = np.asarray(y_true)
+        order  = np.argsort(-y_prob, kind='mergesort')
+        scores = y_prob[order]
+        labels = y_true[order]
+
+        tp = np.cumsum(labels == 1)
+        fp = np.cumsum(labels == 0)
+
+        # keep the last index of each distinct score — ties are flagged together
+        last = np.r_[scores[1:] != scores[:-1], True]
+        tp, fp, thresholds = tp[last], fp[last], scores[last]
+        fn = (y_true == 1).sum() - tp
+
+        cost = fn * self.config.cost_false_negative + fp * self.config.cost_false_positive
+        return pd.DataFrame({'threshold': thresholds, 'tp': tp, 'fp': fp, 'fn': fn, 'cost': cost})
 
     def calculate_business_cost(self, y_true, y_prob):
         """
@@ -63,41 +88,44 @@ class ModelEvaluation:
         cost_fp = cost of false alarm (false positive)
         Reflects asymmetric cost structure of fraud detection
         """
-        precision, recall, thresholds = precision_recall_curve(y_true, y_prob)
-        precision = precision[:-1]
-        recall    = recall[:-1]
+        sweep = self.threshold_sweep(y_true, y_prob)
+        best  = sweep.loc[sweep['cost'].idxmin()]
+        return best['threshold'], best['cost']
 
-        total_fraud = y_true.sum()
-        total_legit = (y_true == 0).sum()
-
-        costs = []
-        for i, threshold in enumerate(thresholds):
-            tp = recall[i] * total_fraud
-            fn = (1 - recall[i]) * total_fraud
-            fp = (1 - precision[i]) * (tp / precision[i]) if precision[i] > 0 else total_legit
-            total_cost = (fn * self.config.cost_false_negative) + \
-                         (fp * self.config.cost_false_positive)
-            costs.append(total_cost)
-
-        costs              = np.array(costs)
-        best_cost_idx      = costs.argmin()
-        best_threshold     = thresholds[best_cost_idx]
-        best_cost          = costs[best_cost_idx]
-
-        return best_threshold, best_cost
-
-    def evaluate_model(self, name, model, X, X_scaled, y_true):
+    def metrics_at_threshold(self, y_true, y_prob, threshold):
         """
-        Evaluates a single model on a dataset
-        Returns dict of all metrics
-        Uses scaled features for LR, raw for RF and XGB
+        Operating-point metrics for a fixed decision threshold
+        Used to compare all models at the champion's deployment threshold
         """
-        # logistic regression needs scaled features
+        y_true = np.asarray(y_true)
+        flagged = y_prob >= threshold
+        tp = int((flagged & (y_true == 1)).sum())
+        fp = int((flagged & (y_true == 0)).sum())
+        fn = int((~flagged & (y_true == 1)).sum())
+        tn = int((~flagged & (y_true == 0)).sum())
+
+        return {
+            'threshold':  round(float(threshold), 6),
+            'TP': tp, 'FP': fp, 'TN': tn, 'FN': fn,
+            'Precision':  round(tp / (tp + fp), 4) if tp + fp else 0.0,
+            'Recall':     round(tp / (tp + fn), 4) if tp + fn else 0.0,
+            'Flag_rate':  round(float(flagged.mean()), 6),
+            'Cost':       float(fn * self.config.cost_false_negative + fp * self.config.cost_false_positive)
+        }
+
+    def predict(self, name, model, X, X_scaled):
+        """
+        Logistic regression needs scaled features, RF and XGB use raw
+        """
         if name == 'Logistic Regression':
-            probs = model.predict_proba(X_scaled)[:, 1]
-        else:
-            probs = model.predict_proba(X)[:, 1]
+            return model.predict_proba(X_scaled)[:, 1]
+        return model.predict_proba(X)[:, 1]
 
+    def evaluate_model(self, probs, y_true):
+        """
+        Evaluates a single model's scores on a dataset
+        Returns dict of all metrics
+        """
         # threshold independent metrics
         ks, _    = self.calculate_ks(y_true, probs)
         auprc    = average_precision_score(y_true, probs)
@@ -123,6 +151,8 @@ class ModelEvaluation:
             'F1_threshold':        round(float(f1_threshold), 4),
             'Business_threshold':  round(float(biz_threshold), 4),
             'Business_cost':       round(float(biz_cost), 2),
+            'Mean_score':          round(float(probs.mean()), 6),
+            'Fraud_rate':          round(float(np.mean(y_true)), 6),
             'TP':                  int(cm[1][1]),
             'FP':                  int(cm[0][1]),
             'TN':                  int(cm[0][0]),
@@ -136,6 +166,10 @@ class ModelEvaluation:
         Enables experiment tracking and model versioning
         Critical for champion-challenger management in production
         """
+        import mlflow
+        import mlflow.xgboost
+        import mlflow.sklearn
+
         mlflow.set_registry_uri(self.config.mlflow_uri)
 
         with mlflow.start_run(run_name=f"{model_name}_{dataset}"):
@@ -169,16 +203,21 @@ class ModelEvaluation:
     def run(self):
         """
         Runs full model evaluation pipeline:
-        load models → evaluate on validate and test → log to MLflow → save results
+        load models → evaluate on validate and test → pick business threshold
+        on validate → apply it unchanged to test → log to MLflow → save results
         """
-        # initialise DagsHub for remote MLflow tracking
-        os.environ['MLFLOW_TRACKING_URI'] = 'https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow'
-        os.environ['MLFLOW_TRACKING_USERNAME'] = 'korede-folarin'
-        os.environ['MLFLOW_TRACKING_PASSWORD'] = os.getenv('DAGSHUB_TOKEN')
+        # remote MLflow tracking only when a DagsHub token is available
+        log_mlflow = bool(os.getenv('DAGSHUB_TOKEN'))
+        if log_mlflow:
+            import mlflow
+            os.environ['MLFLOW_TRACKING_URI'] = self.config.mlflow_uri
+            os.environ['MLFLOW_TRACKING_USERNAME'] = 'korede-folarin'
+            os.environ['MLFLOW_TRACKING_PASSWORD'] = os.getenv('DAGSHUB_TOKEN')
+            mlflow.set_tracking_uri(self.config.mlflow_uri)
+            logger.info("MLflow tracking initialised via DagsHub")
+        else:
+            logger.warning("DAGSHUB_TOKEN not set — skipping MLflow logging")
 
-        mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
-
-        logger.info("MLflow tracking initialised via DagsHub")
         logger.info("="*50)
         logger.info("Starting Model Evaluation")
         logger.info("="*50)
@@ -204,44 +243,66 @@ class ModelEvaluation:
         }
 
         results = {'validate': {}, 'test': {}}
+        scores  = {'validate': {}, 'test': {}}
 
         for model_name, model in models.items():
             logger.info(f"Evaluating {model_name}...")
 
-            val_metrics = self.evaluate_model(
-                model_name, model,
-                X_validate, X_val_scaled, y_validate
-            )
+            scores['validate'][model_name] = self.predict(model_name, model, X_validate, X_val_scaled)
+            scores['test'][model_name]     = self.predict(model_name, model, X_test, X_test_scaled)
+
+            val_metrics  = self.evaluate_model(scores['validate'][model_name], y_validate)
+            test_metrics = self.evaluate_model(scores['test'][model_name], y_test)
             results['validate'][model_name] = val_metrics
+            results['test'][model_name]     = test_metrics
 
-            test_metrics = self.evaluate_model(
-                model_name, model,
-                X_test, X_test_scaled, y_test
-            )
-            results['test'][model_name] = test_metrics
+            if log_mlflow:
+                self.log_to_mlflow(model_name, model, val_metrics, 'validate')
+                self.log_to_mlflow(model_name, model, test_metrics, 'test')
 
-            self.log_to_mlflow(model_name, model, val_metrics, 'validate')
-            self.log_to_mlflow(model_name, model, test_metrics, 'test')
+        # deployment threshold is chosen on validate only, then frozen for test
+        business_threshold = floor_6dp(
+            self.calculate_business_cost(y_validate, scores['validate']['XGBoost'])[0]
+        )
+        f1_threshold = floor_6dp(
+            self.find_best_f1_threshold(y_validate, scores['validate']['XGBoost'])[1]
+        )
+        logger.info(f"Business threshold (validate cost-optimal): {business_threshold:.4f}")
 
-        xgb_test = results['test']['XGBoost']
+        labels = {'validate': y_validate, 'test': y_test}
+        results['at_business_threshold'] = {
+            split: {
+                m: self.metrics_at_threshold(labels[split], scores[split][m], business_threshold)
+                for m in models
+            }
+            for split in ('validate', 'test')
+        }
+        results['xgboost_at_f1_threshold'] = {
+            split: self.metrics_at_threshold(labels[split], scores[split]['XGBoost'], f1_threshold)
+            for split in ('validate', 'test')
+        }
+
         results['champion'] = {
             'model': 'XGBoost',
             'rationale': [
-                'Best F1 and Precision at optimal threshold',
-                'Best score calibration (mean score ≈ true fraud rate)',
-                'Zero false positives at F1 optimal threshold',
-                'Most operationally viable at business cost threshold'
+                'Best score calibration (mean score closest to true fraud rate)',
+                'Only model whose alerts stay usable at the deployment threshold',
+                'Threshold chosen on validate by minimising business cost, frozen for test'
             ],
-            'test_metrics': xgb_test,
-            'business_threshold': self.config.business_threshold,
+            'test_metrics': results['test']['XGBoost'],
+            'business_threshold': floor_6dp(business_threshold),
+            'f1_threshold': floor_6dp(f1_threshold),
             'cost_fn': self.config.cost_false_negative,
             'cost_fp': self.config.cost_false_positive
         }
 
         os.makedirs(self.config.root_dir, exist_ok=True)
         save_json(Path(self.config.evaluation_results), results)
-
         logger.info(f"Evaluation results saved to: {self.config.evaluation_results}")
+
+        from frauddetection.components.dashboard_export import DashboardExport
+        DashboardExport(self).run(models, scores, labels, results, X_test)
+
         logger.info("Model Evaluation Complete")
 
         return results

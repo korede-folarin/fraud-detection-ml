@@ -79,5 +79,9 @@ class ConfigurationManager:
             mlflow_uri=config.mlflow_uri,
             cost_false_negative=params.cost_false_negative,
             cost_false_positive=params.cost_false_positive,
-            business_threshold=params.business_threshold
+            raw_data_path=Path(config.raw_data_path),
+            train_data_path=Path(config.train_data_path),
+            iv_rankings_path=Path(config.iv_rankings_path),
+            dashboard_data=Path(config.dashboard_data),
+            demo_assets_dir=Path(config.demo_assets_dir)
         )

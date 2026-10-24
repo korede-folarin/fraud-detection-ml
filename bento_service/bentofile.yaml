@@ -1,18 +1,22 @@
-service: "service:FraudDetectionService"
+# build from the repository root:
+#   bentoml build -f bento_service/bentofile.yaml .
+service: "bento_service.service:FraudDetectionService"
 
 labels:
   project: fraud-detection-ml
   stage: champion
 
 include:
-  - "service.py"
+  - "bento_service/__init__.py"
+  - "bento_service/service.py"
+  - "src/frauddetection/__init__.py"
+  - "src/frauddetection/inference.py"
 
 python:
   packages:
     - pandas
     - scikit-learn
     - xgboost
-    - shap
     - pydantic
 
 docker:

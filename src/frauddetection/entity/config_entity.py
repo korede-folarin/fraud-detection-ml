@@ -44,4 +44,8 @@ class ModelEvaluationConfig:
     mlflow_uri: str
     cost_false_negative: int
     cost_false_positive: int
-    business_threshold: float
+    raw_data_path: Path
+    train_data_path: Path
+    iv_rankings_path: Path
+    dashboard_data: Path
+    demo_assets_dir: Path

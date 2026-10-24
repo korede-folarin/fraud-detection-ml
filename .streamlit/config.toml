@@ -1,0 +1,42 @@
+# Aubergine visual direction — shared with the static demo site (site/style.css)
+[server]
+enableStaticServing = true   # serves dashboard/static/ (self-hosted fonts, no Google Fonts)
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#3b2142"            # --key
+backgroundColor = "#ebe7ea"         # --paper
+secondaryBackgroundColor = "#f6f3f5" # --card
+textColor = "#110d12"               # --ink
+linkColor = "#3b2142"
+borderColor = "#110d12"
+showWidgetBorder = true
+baseRadius = "14px"
+buttonRadius = "999px"
+font = "Bricolage Grotesque, sans-serif"
+headingFont = "Bricolage Grotesque, sans-serif"
+headingFontWeights = [800, 800, 700, 700, 700, 700]
+codeFont = "JetBrains Mono, monospace"
+chartCategoricalColors = ["#3b2142", "#665c68", "#d3c7d5", "#ff4f12"]
+
+[[theme.fontFaces]]
+family = "Bricolage Grotesque"
+url = "app/static/bricolage-grotesque-latin-wght-normal.woff2"
+weight = "200 800"
+
+[[theme.fontFaces]]
+family = "JetBrains Mono"
+url = "app/static/jetbrains-mono-latin-wght-normal.woff2"
+weight = "100 800"
+
+# dark sections use the aubergine key colour, not black
+[theme.sidebar]
+backgroundColor = "#3b2142"
+secondaryBackgroundColor = "#4a2d52"
+textColor = "#f1eaf2"
+primaryColor = "#f1eaf2"
+linkColor = "#f1eaf2"
+borderColor = "#f1eaf2"

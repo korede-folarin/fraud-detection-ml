@@ -1,895 +1,823 @@
-import streamlit as st
+import sys
 import json
 import numpy as np
 import pandas as pd
+import streamlit as st
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
 from pathlib import Path
+
+import xgboost as xgb
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+from frauddetection.inference import decide, shap_contributions, describe_feature  # noqa: E402
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Fraud Risk Monitor | Korede Folarin",
-    page_icon="🔴",
+    page_title="Fraud Detection · Dashboard · Korede Folarin",
+    page_icon="🟪",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"  # collapsed on phones so the demo is the first thing seen
 )
 
+SITE_URL = "https://korede-folarin.github.io/fraud-detection-ml/"
+REPO_URL = "https://github.com/korede-folarin/fraud-detection-ml"
+MLFLOW_URL = "https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow"
+
 # ─────────────────────────────────────────────
-# CUSTOM CSS — dark banking aesthetic
+# AUBERGINE VISUAL DIRECTION — same tokens as site/style.css
+# Theme colours and self-hosted fonts are set in .streamlit/config.toml;
+# this block adds the shared components (cards, stamp, track, notes)
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* base */
-    .stApp { background-color: #0d1117; }
-    .main .block-container { padding: 1.5rem 2rem; max-width: 1400px; }
-
-    /* typography */
-    h1, h2, h3 { color: #e6edf3; font-family: 'Inter', sans-serif; }
-    p, li, label { color: #8b949e; }
-
-    /* metric cards */
-    .metric-card {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 8px;
-        padding: 1.2rem 1.4rem;
-        margin-bottom: 0.8rem;
+    :root{
+        --paper:#ebe7ea; --card:#f6f3f5; --ink:#110d12; --muted:#665c68;
+        --key:#3b2142; --on-key:#f1eaf2; --soft:#d3c7d5; --line:#cfc6d1; --orange:#ff4f12;
+        --rule:1.5px solid var(--ink); --mono:"JetBrains Mono",ui-monospace,monospace;
     }
-    .metric-label {
-        font-size: 0.72rem;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #8b949e;
-        margin-bottom: 0.3rem;
-    }
-    .metric-value {
-        font-size: 1.9rem;
-        font-weight: 700;
-        color: #e6edf3;
-        font-family: 'Courier New', monospace;
-        line-height: 1;
-    }
-    .metric-delta-pos { color: #3fb950; font-size: 0.8rem; }
-    .metric-delta-neg { color: #f85149; font-size: 0.8rem; }
+    .main .block-container, [data-testid="stMainBlockContainer"]{ max-width:1280px; padding-top:2.2rem; }
 
-    /* champion badge */
-    .champion-badge {
-        display: inline-block;
-        background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%);
-        color: white;
-        padding: 0.2rem 0.7rem;
-        border-radius: 20px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+    /* type */
+    .kicker{ font-family:var(--mono); font-weight:500; font-size:12px; letter-spacing:.04em;
+             text-transform:uppercase; color:var(--key); margin:0 0 .6rem; }
+    .page-title{ font-weight:800; text-transform:uppercase; letter-spacing:-.05em; line-height:.92;
+                 font-size:clamp(34px,4.4vw,64px); color:var(--ink); margin:0 0 .9rem; }
+    .lede{ color:var(--muted); max-width:72ch; font-size:16.5px; line-height:1.5; margin:0 0 1.2rem; }
+    .mono-label{ font-family:var(--mono); font-weight:500; font-size:11.5px; letter-spacing:.04em;
+                 text-transform:uppercase; color:var(--muted); line-height:1.5; margin:0; }
+    .muted{ color:var(--muted); font-size:14.5px; }
+
+    /* stat cards — first one solid aubergine, the rest outlined */
+    .stat{ border:var(--rule); border-radius:14px; padding:16px 18px; margin-bottom:.8rem;
+           display:flex; flex-direction:column; gap:8px; min-height:132px; }
+    .stat-solid{ background:var(--key); border-color:var(--key); }
+    .stat-solid .mono-label, .stat-solid .stat-sub{ color:color-mix(in srgb,var(--on-key) 78%,transparent); }
+    .stat-solid .stat-value{ color:var(--on-key); }
+    .stat-value{ font-weight:800; letter-spacing:-.06em; font-variant-numeric:tabular-nums;
+                 font-size:clamp(28px,2.6vw,40px); line-height:1; color:var(--ink); }
+    .stat-sub{ color:var(--muted); font-size:13.5px; }
+    .chip-orange{ display:inline-block; background:var(--orange); color:var(--ink); font-family:var(--mono);
+                  font-size:11px; letter-spacing:.04em; text-transform:uppercase; padding:2px 9px; border-radius:999px; }
+
+    /* verdict card */
+    .verdict{ background:var(--key); color:var(--on-key); border-radius:14px; padding:22px 24px; margin-bottom:12px; }
+    .verdict .mono-label{ color:color-mix(in srgb,var(--on-key) 78%,transparent); }
+    .stamp-row{ display:flex; align-items:center; gap:14px; margin:12px 0 18px; flex-wrap:wrap; }
+    .stamp{ display:inline-block; font-weight:800; text-transform:uppercase; line-height:1; }
+    .stamp.decline{ background:var(--orange); color:var(--ink); border:2px solid var(--ink); border-radius:8px;
+                    font-size:24px; padding:11px 16px; transform:rotate(-3deg); }
+    .stamp.approve{ color:var(--on-key); border:1.5px solid var(--on-key); border-radius:999px; font-size:19px; padding:9px 18px; }
+    .prob{ font-weight:800; letter-spacing:-.06em; font-variant-numeric:tabular-nums;
+           font-size:clamp(52px,6vw,92px); line-height:.95; margin:4px 0 14px; color:var(--on-key); }
+    .track{ position:relative; height:12px; border-radius:999px; background:color-mix(in srgb,var(--on-key) 18%,transparent); margin-top:26px; }
+    .track-fill{ position:absolute; inset:0 auto 0 0; border-radius:999px; background:var(--on-key); }
+    .track-dot{ position:absolute; top:50%; width:20px; height:20px; margin:-10px 0 0 -10px; border-radius:50%;
+                background:var(--on-key); border:3px solid var(--key); box-shadow:0 0 0 1.5px var(--on-key); }
+    .track-mark{ position:absolute; top:-14px; bottom:-14px; border-left:3px solid var(--orange); }
+    .track-mark span{ position:absolute; bottom:100%; left:6px; white-space:nowrap; color:var(--on-key); }
+    .track-scale{ display:flex; justify-content:space-between; margin-top:14px; }
+    .actual{ margin-top:18px; font-size:17px; }
+
+    /* customer notice */
+    .notice{ background:var(--card); border:var(--rule); border-left:4px solid var(--key); border-radius:14px; padding:16px 20px; }
+    .notice p:last-child{ margin:6px 0 0; font-size:16.5px; line-height:1.5; color:var(--ink); }
+
+    /* judgement + honest notes */
+    .judgement{ border-top:var(--rule); border-bottom:var(--rule); padding:16px 0; margin:1.4rem 0 .6rem;
+                display:grid; grid-template-columns:130px 1fr; gap:6px 24px; }
+    .judgement .mono-label{ color:var(--key); font-weight:700; }
+    .judgement p:not(.mono-label){ grid-column:2; max-width:80ch; margin:0; color:var(--ink); font-size:15.5px; line-height:1.55; }
+    .judgement p+p:not(.mono-label){ margin-top:6px; }
+    .honest{ background:var(--card); border:var(--rule); border-radius:14px; padding:16px 20px; margin-top:.8rem; }
+    .honest p:last-child{ margin:6px 0 0; color:var(--ink); font-size:15.5px; line-height:1.55; max-width:84ch; }
+    .health{ border:var(--rule); border-radius:14px; padding:12px 16px; margin:.2rem 0 1rem; font-size:15px; }
+    .health strong{ font-weight:700; }
+
+    /* confusion matrix */
+    .cm{ display:grid; grid-template-columns:auto 1fr 1fr; gap:6px; font-variant-numeric:tabular-nums; }
+    .cm div{ border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--card); }
+    .cm .h{ border:0; background:transparent; padding:2px 4px; }
+    .cm .v{ font-weight:800; font-size:22px; letter-spacing:-.03em; }
+    .cm .tp{ background:var(--key); border-color:var(--key); color:var(--on-key); }
+    .cm-title{ font-weight:700; margin:0 0 6px; }
+
+    /* sidebar (aubergine via theme.sidebar) */
+    section[data-testid="stSidebar"] .wordmark{ font-weight:700; font-size:21px; letter-spacing:-.02em; color:var(--on-key); margin:0; }
+    section[data-testid="stSidebar"] .mono-label{ color:color-mix(in srgb,var(--on-key) 72%,transparent); }
+    section[data-testid="stSidebar"] .facts{ font-family:var(--mono); font-size:12px; line-height:1.9; color:var(--on-key); }
+    section[data-testid="stSidebar"] .facts a{ color:var(--on-key); }
+    section[data-testid="stSidebar"] hr{ border-color:color-mix(in srgb,var(--on-key) 30%,transparent); }
+
+    /* Streamlit's markdown sets p font-size; keep the shared type scale */
+    [data-testid="stMarkdownContainer"] .mono-label{ font-size:11.5px !important; line-height:1.5 !important; }
+    [data-testid="stMarkdownContainer"] .kicker{ font-size:12px !important; }
+    [data-testid="stMarkdownContainer"] .lede{ font-size:16.5px !important; }
+    [data-testid="stMarkdownContainer"] .muted{ font-size:14.5px !important; }
+    [data-testid="stMarkdownContainer"] .facts{ font-size:12px !important; }
+    [data-testid="stMarkdownContainer"] .verdict .actual{ font-size:17px !important; }
+    [data-testid="stMainBlockContainer"]{ padding-top:4.5rem !important; }
+    [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.js-plotly-plot){ background:var(--card); }
+
+    @media (max-width:640px){
+        .judgement{ grid-template-columns:1fr; }
+        .judgement p:not(.mono-label){ grid-column:1; }
     }
-
-    /* alert banners */
-    .alert-healthy {
-        background: #0d2818;
-        border-left: 4px solid #3fb950;
-        padding: 0.8rem 1rem;
-        border-radius: 4px;
-        margin: 0.5rem 0;
-    }
-    .alert-warning {
-        background: #2d1a00;
-        border-left: 4px solid #e3b341;
-        padding: 0.8rem 1rem;
-        border-radius: 4px;
-        margin: 0.5rem 0;
-    }
-    .alert-critical {
-        background: #2d0a0a;
-        border-left: 4px solid #f85149;
-        padding: 0.8rem 1rem;
-        border-radius: 4px;
-        margin: 0.5rem 0;
-    }
-
-    /* section headers */
-    .section-eyebrow {
-        font-size: 0.68rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: #388bfd;
-        margin-bottom: 0.3rem;
-    }
-
-    /* table styling */
-    .stDataFrame { background: #161b22; }
-    thead tr th { background: #21262d !important; color: #e6edf3 !important; }
-
-    /* sidebar */
-    .css-1d391kg { background: #161b22; }
-    section[data-testid="stSidebar"] { background: #161b22; border-right: 1px solid #30363d; }
-
-    /* divider */
-    hr { border-color: #21262d; }
-
-    /* plotly charts transparent background */
-    .js-plotly-plot { border-radius: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# DATA LOADING
+# DATA LOADING — every number below comes from these pipeline outputs
+# (written by the model evaluation stage, see dashboard_export.py)
 # ─────────────────────────────────────────────
+EVAL_DIR   = ROOT / "artifacts" / "model_evaluation"
+ASSETS_DIR = ROOT / "dashboard" / "assets"
 
 
-@st.cache_data(ttl=300)
-def load_results():
-    # local development
-    local_path = Path("artifacts/model_evaluation/evaluation_results.json")
-    if local_path.exists():
-        with open(local_path) as f:
-            return json.load(f)
+@st.cache_data
+def load_json(path):
+    with open(path) as f:
+        return json.load(f)
 
-    # production — read from GitHub raw
-    import urllib.request
-    url = "https://raw.githubusercontent.com/korede-folarin/fraud-detection-ml/main/artifacts/model_evaluation/evaluation_results.json"
-    try:
-        with urllib.request.urlopen(url) as response:
-            return json.load(response)
-    except:
-        return None
 
-results = load_results()
+@st.cache_resource
+def load_model():
+    model = xgb.XGBClassifier()
+    model.load_model(ASSETS_DIR / "xgboost_model.json")
+    return model
+
+
+@st.cache_data
+def load_demo():
+    return pd.read_csv(ASSETS_DIR / "demo_transactions.csv", index_col="test_row")
+
+
+try:
+    results = load_json(EVAL_DIR / "evaluation_results.json")
+    dash    = load_json(EVAL_DIR / "dashboard_data.json")
+    meta    = load_json(ASSETS_DIR / "model_meta.json")
+    model   = load_model()
+    demo    = load_demo()
+except FileNotFoundError as e:
+    st.error(f"Missing pipeline output: `{e.filename}`. Run `python main.py` to regenerate it.")
+    st.stop()
+
+FEATURES   = meta["features"]
+THRESHOLD  = meta["business_threshold"]
+COST_FN    = meta["cost_fn"]
+COST_FP    = meta["cost_fp"]
+models_list = ['XGBoost', 'Random Forest', 'Logistic Regression']
+champion   = results["champion"]
+at_biz     = results["at_business_threshold"]
+at_f1      = results["xgboost_at_f1_threshold"]
+splits     = dash["splits"]
+hours      = dash["hourly"]["split_hours"]
+WINDOW_HOURS = len(dash["hourly"]["hour"])
+TOTAL_ROWS   = sum(s["rows"] for s in splits.values())
+TOTAL_FRAUD  = sum(s["fraud"] for s in splits.values())
+
+INK, MUTED, KEY, SOFT, LINE, CARD, ORANGE = "#110d12", "#665c68", "#3b2142", "#d3c7d5", "#cfc6d1", "#f6f3f5", "#ff4f12"
+
 PLOT_CONFIG = dict(
-    paper_bgcolor='#161b22',
-    plot_bgcolor='#0d1117',
-    font=dict(color='#8b949e', family='Inter, sans-serif', size=11),
-    margin=dict(l=40, r=20, t=50, b=40)
+    paper_bgcolor=CARD,
+    plot_bgcolor=CARD,
+    font=dict(color=MUTED, family='JetBrains Mono, monospace', size=11),
+    margin=dict(l=48, r=20, t=40, b=44),
+    hoverlabel=dict(font_family='JetBrains Mono, monospace'),
 )
 
+# the model or series being discussed is aubergine, comparisons are muted / lilac;
+# orange is reserved for the threshold line
 COLORS = {
-    'XGBoost': '#388bfd',
-    'Random Forest': '#3fb950',
-    'Logistic Regression': '#e3b341',
-    'fraud': '#f85149',
-    'legit': '#3fb950',
-    'validate': '#388bfd',
-    'test': '#e3b341',
-    'threshold': '#f85149',
-    'grid': '#21262d'
+    'XGBoost': KEY,
+    'Random Forest': MUTED,
+    'Logistic Regression': SOFT,
+    'validate': KEY,
+    'test': MUTED,
+    'threshold': ORANGE,
+    'grid': LINE,
 }
+
+
+def axis(**kw):
+    return dict(gridcolor=LINE, zerolinecolor=LINE, linecolor=INK, **kw)
+
+
+def legend(**kw):
+    return dict(bgcolor='rgba(0,0,0,0)', font=dict(color=INK), **kw)
+
+
+def chart(fig):
+    with st.container(border=True):
+        st.plotly_chart(fig, width="stretch", config={"displaylogo": False})
+
+
+def card(col, label, value, sub="", solid=False):
+    col.markdown(f"""
+    <div class='stat{" stat-solid" if solid else ""}'>
+        <p class='mono-label'>{label}</p>
+        <div class='stat-value'>{value}</div>
+        <div class='stat-sub'>{sub}</div>
+    </div>""", unsafe_allow_html=True)
+
+
+def header(kicker, title, lede=""):
+    st.markdown(f"<p class='kicker'>{kicker}</p><div class='page-title' role='heading' aria-level='1'>{title}</div>"
+                + (f"<p class='lede'>{lede}</p>" if lede else ""), unsafe_allow_html=True)
+
+
+def eyebrow(text):
+    st.markdown(f"<p class='kicker' style='margin-top:.6rem'>{text}</p>", unsafe_allow_html=True)
+
+
+def caption(text):
+    st.markdown(f"<p class='muted'>{text}</p>", unsafe_allow_html=True)
+
+
+def judgement(*paragraphs):
+    body = "".join(f"<p>{p}</p>" for p in paragraphs)
+    st.markdown(f"<aside class='judgement'><p class='mono-label'>Judgement</p>{body}</aside>", unsafe_allow_html=True)
+
+
+def pct(x, digits=1):
+    return f"{x * 100:.{digits}f}%"
+
+
+def prob_text(p):
+    if p >= 0.0001:
+        return pct(p, 2) if p >= 0.001 else pct(p, 3)
+    return "<0.01%"
+
 
 # ─────────────────────────────────────────────
 # SIDEBAR
 # ─────────────────────────────────────────────
+PAGES = ["Score a transaction", "Model performance", "Threshold & cost", "Drift", "Champion rationale"]
+
 with st.sidebar:
-    st.markdown("## 🔴 Fraud Risk Monitor")
-    st.markdown("<p style='color:#8b949e;font-size:0.8rem;'>Korede Folarin · Banking ML Risk Pipeline</p>", unsafe_allow_html=True)
+    st.markdown("<p class='wordmark'>Fraud Detection</p>"
+                "<p class='mono-label'>Interactive dashboard · Korede Folarin</p>", unsafe_allow_html=True)
     st.divider()
 
-    page = st.radio(
-        "Navigation",
-        ["📊 Overview", "🎯 Model Discrimination", "💷 Business Threshold", "📉 Concept Drift", "🏆 Champion Rationale"],
-        label_visibility="collapsed"
+    page = st.radio("Navigation", PAGES, label_visibility="collapsed")
+
+    st.divider()
+    st.markdown(f"""
+    <p class='mono-label'>Dataset</p>
+    <div class='facts'>
+    ULB credit-card fraud (Kaggle)<br>
+    {WINDOW_HOURS} hours · Sept 2013<br>
+    {TOTAL_ROWS:,} transactions<br>
+    {TOTAL_FRAUD:,} fraud ({TOTAL_FRAUD / TOTAL_ROWS:.3%})<br>
+    70/15/15 out-of-time split<br>
+    Test = hours {hours['test_start']:.0f}–{WINDOW_HOURS}, never trained on
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown(f"""
+    <p class='mono-label'>Links</p>
+    <div class='facts'>
+    <a href='{SITE_URL}' target='_blank'>Live demo site ↗</a><br>
+    <a href='{REPO_URL}' target='_blank'>GitHub ↗</a><br>
+    <a href='{MLFLOW_URL}' target='_blank'>MLflow on DagsHub ↗</a><br>
+    <a href='https://koredefolarin.com' target='_blank'>koredefolarin.com ↗</a>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════
+# PAGE 1 — SCORE A TRANSACTION (live demo)
+# ═══════════════════════════════════════════════
+EDITABLE = [f for f in dash["importance"]["features"] if f.startswith("V")][:6]
+RANGES = {
+    f: (float(min(demo[f].min(), meta["feature_ranges"][f][0])),
+        float(max(demo[f].max(), meta["feature_ranges"][f][1])))
+    for f in EDITABLE
+}
+MAX_AMOUNT = float(np.ceil(np.expm1(demo["Amount_log"].max())))
+
+
+def load_row(row_id):
+    """Copies a real test transaction into the input widgets"""
+    row = demo.loc[row_id]
+    st.session_state.row_id = int(row_id)
+    for f in EDITABLE:
+        st.session_state[f"f_{f}"] = float(row[f])
+    st.session_state.f_Amount = round(float(np.expm1(row["Amount_log"])), 2)
+    st.session_state.f_Hour = int(row["Hour"])
+
+
+def pick(kind):
+    rng = np.random.default_rng()
+    if kind == "legit":
+        pool = demo[(demo["Class"] == 0) & (demo["score"] < THRESHOLD)]
+    elif kind == "fraud":
+        pool = demo[demo["Class"] == 1]
+    elif kind == "borderline":
+        pool = demo[(demo["score"] > THRESHOLD / 4) & (demo["score"] < THRESHOLD * 4)]
+    else:  # false alarm
+        pool = demo[(demo["Class"] == 0) & (demo["score"] >= THRESHOLD)]
+    load_row(rng.choice(pool.index))
+
+
+if "row_id" not in st.session_state:
+    # open on a real fraud the model catches, so the first view shows a decline notice
+    load_row(demo[(demo["Class"] == 1) & (demo["score"] > 0.9)].index[0])
+
+if page == "Score a transaction":
+
+    header("01 · Score a transaction", "One payment, one decision, one reason",
+           f"Load a real transaction from the out-of-time test set (hours {hours['test_start']:.0f}–{WINDOW_HOURS}, "
+           f"never seen in training) or change its features. The champion XGBoost model scores it live against the "
+           f"deployment threshold ({THRESHOLD:.4f}) and explains the decision with SHAP values for this transaction — "
+           f"the same code the REST API runs.")
+
+    b1, b2, b3, b4 = st.columns(4)
+    b1.button("Random legitimate", on_click=pick, args=("legit",), width="stretch")
+    b2.button("Random fraud", on_click=pick, args=("fraud",), width="stretch")
+    b3.button("Borderline", on_click=pick, args=("borderline",), width="stretch",
+              help="Score within 4× of the threshold either side")
+    b4.button("False alarm", on_click=pick, args=("false_alarm",), width="stretch",
+              help="A legitimate transaction the model flags")
+
+    original = demo.loc[st.session_state.row_id]
+    # verdict column first so phones (where columns stack) show the decision before the inputs
+    right, left = st.columns([1.25, 1], gap="large")
+
+    with left:
+        eyebrow(f"Inputs · test transaction #{st.session_state.row_id}")
+
+        c1, c2 = st.columns(2)
+        c1.number_input("Amount (€)", min_value=0.0, max_value=MAX_AMOUNT, step=1.0, key="f_Amount")
+        c2.slider("Hour of day", 0, 23, key="f_Hour")
+
+        st.markdown("<p class='mono-label' style='margin:.4rem 0'>Top behavioural risk indicators · "
+                    "anonymised PCA components, ranked by SHAP importance</p>", unsafe_allow_html=True)
+        for f in EDITABLE:
+            lo, hi = RANGES[f]
+            st.slider(f, lo, hi, step=0.01, key=f"f_{f}", format="%.2f")
+
+        st.button("Reset to original values", on_click=load_row, args=(st.session_state.row_id,))
+        caption(f"The other {len(FEATURES) - len(EDITABLE) - 2} features keep this transaction's real values.")
+
+    # build the model input from the real row plus any edits
+    x = original[FEATURES].astype(float).copy()
+    for f in EDITABLE:
+        x[f] = st.session_state[f"f_{f}"]
+    x["Amount_log"] = np.log1p(st.session_state.f_Amount)
+    x["Hour"] = st.session_state.f_Hour
+    X = pd.DataFrame([x.values], columns=FEATURES)
+
+    fraud_prob = float(model.predict_proba(X)[0, 1])
+    contributions, base_value = shap_contributions(model, X)
+    result = decide(fraud_prob, contributions, THRESHOLD)
+    edited = not np.allclose(x.values, original[FEATURES].astype(float).values, atol=1e-4)
+
+    with right:
+        declined = result["decision"] == "DECLINE"
+        pos = min(100.0, fraud_prob * 100)
+        actual = "fraud" if original["Class"] == 1 else "legitimate"
+        st.markdown(f"""
+        <div class='verdict' aria-live='polite'>
+            <p class='mono-label'>Test transaction #{st.session_state.row_id} · €{st.session_state.f_Amount:,.2f} · hour of day {st.session_state.f_Hour}{" · edited" if edited else ""}</p>
+            <div class='stamp-row'>
+                <span class='stamp {"decline" if declined else "approve"}'>{result['decision']}</span>
+                <span class='mono-label'>Risk band · {result['risk_level']}</span>
+            </div>
+            <p class='mono-label'>Fraud probability</p>
+            <div class='prob'>{prob_text(fraud_prob)}</div>
+            <div class='track'>
+                <div class='track-fill' style='width:{pos}%'></div>
+                <div class='track-mark' style='left:{THRESHOLD * 100}%'><span class='mono-label'>threshold {THRESHOLD:.4f}</span></div>
+                <div class='track-dot' style='left:{pos}%'></div>
+            </div>
+            <div class='track-scale mono-label'><span>0%</span><span>50%</span><span>100%</span></div>
+            <p class='actual'>Actually: <strong>{actual}</strong>{" (before your edits)" if edited else ""}</p>
+        </div>""", unsafe_allow_html=True)
+
+        notice = result['adverse_action_notice'] or \
+            "No notice. The payment is approved, so the API returns no decline reason."
+        st.markdown(f"""
+        <div class='notice'>
+            <p class='mono-label'>What the customer receives</p>
+            <p>{notice}</p>
+        </div>""", unsafe_allow_html=True)
+
+    eyebrow("Why — SHAP contributions for this transaction")
+    caption("Each bar is how far one feature pushed this score towards fraud (aubergine) or away from it (lilac), "
+            "in log-odds. Only aubergine bars can be cited as decline reasons.")
+
+    contrib = pd.Series(contributions)
+    top = contrib.reindex(contrib.abs().sort_values(ascending=False).index[:10])
+    rest = contrib.drop(top.index).sum()
+
+    names  = ["Model baseline"] + [f"{f} — {describe_feature(f)}" if not f.startswith("V") else describe_feature(f)
+                                   for f in top.index] \
+             + [f"{len(contrib) - len(top)} other features", "Final score"]
+    values = [base_value] + top.tolist() + [rest, 0]
+    measure = ["absolute"] + ["relative"] * (len(top) + 1) + ["total"]
+
+    wf = go.Figure(go.Waterfall(
+        orientation="h",
+        y=names, x=values, measure=measure,
+        increasing=dict(marker=dict(color=KEY)),
+        decreasing=dict(marker=dict(color=SOFT)),
+        totals=dict(marker=dict(color=MUTED)),
+        connector=dict(line=dict(color=LINE)),
+        text=[f"{v:+.2f}" if 0 < i < len(values) - 1 else "" for i, v in enumerate(values)],
+        textposition="outside", textfont=dict(color=INK),
+    ))
+    wf.update_layout(
+        **{**PLOT_CONFIG, 'margin': dict(l=48, r=64, t=30, b=44)}, height=460, showlegend=False,
+        yaxis=axis(autorange="reversed", tickfont=dict(color=INK)),
+        xaxis=axis(title="Log-odds of fraud"),
+    )
+    chart(wf)
+
+    judgement(
+        "The reasons are faithful to the model, but on this dataset most of them are anonymised components, so the "
+        "customer learns that a reason exists, not what it is. That is a limit of the data, not the method: with a "
+        "bank's named features the same code would name them. I chose honest-but-vague over inventing plausible "
+        "meanings, because a notice that misdescribes the model is worse than one that says little.",
+        "Try the False alarm button. Those payments are declined with reasons that sound just as confident, and they "
+        "are wrong. That is why the notice says the decision is automated and offers a manual review: the "
+        "explanation describes the model, it does not prove it right.",
     )
 
-    st.divider()
-    st.markdown("<p class='section-eyebrow'>Dataset</p>", unsafe_allow_html=True)
-    st.markdown("""
-    <div style='color:#8b949e;font-size:0.8rem;line-height:1.8;'>
-    📁 ULB Credit Card Fraud<br>
-    📅 48-hour window<br>
-    🔢 284,807 transactions<br>
-    🚨 492 fraud (0.173%)<br>
-    ✂️ 70/15/15 OOT split
-    </div>
-    """, unsafe_allow_html=True)
+    with st.expander("API response for this transaction (JSON)"):
+        st.json(result)
 
-    st.divider()
-    st.markdown("<p class='section-eyebrow'>Pipeline</p>", unsafe_allow_html=True)
-    st.markdown("""
-    <div style='color:#8b949e;font-size:0.8rem;line-height:1.8;'>
-    ⚙️ Airflow weekly retraining<br>
-    📈 MLflow → DagsHub tracking<br>
-    📦 DVC data versioning<br>
-    🐳 Astro CLI deployment
-    </div>
-    """, unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────
-# NO DATA STATE
-# ─────────────────────────────────────────────
-if results is None:
-    st.error("⚠️ No evaluation results found. Run `python main.py` to generate `artifacts/model_evaluation/evaluation_results.json`.")
-    st.stop()
-
-models_list = ['XGBoost', 'Random Forest', 'Logistic Regression']
 
 # ═══════════════════════════════════════════════
-# PAGE 1 — OVERVIEW
+# PAGE 2 — MODEL PERFORMANCE
 # ═══════════════════════════════════════════════
-if page == "📊 Overview":
+elif page == "Model performance":
 
-    st.markdown("## Fraud Detection Risk Monitor")
-    st.markdown("<p style='color:#8b949e;margin-top:-0.5rem;'>Real-time model health · Weekly Airflow retraining · MLflow/DagsHub experiment tracking</p>", unsafe_allow_html=True)
+    header("02 · Model performance", "How well it ranks, and what it catches",
+           f"Champion XGBoost on the out-of-time test set (hours {hours['test_start']:.0f}–{WINDOW_HOURS}) "
+           f"at the deployment threshold {THRESHOLD:.4f}.")
 
-    # ── drift alert banner ──
-    xgb_val_ks = results['validate']['XGBoost']['KS']
-    xgb_test_ks = results['test']['XGBoost']['KS']
-    ks_drop = xgb_val_ks - xgb_test_ks
+    xgb_test = results['test']['XGBoost']
+    xgb_biz  = at_biz['test']['XGBoost']
+    trigger_state = "above" if xgb_test['KS'] >= 0.75 else "below"
+    st.markdown(f"""<div class='health'><strong>Retraining trigger:</strong> test KS {xgb_test['KS']:.3f} is
+        {trigger_state} the 0.75 line the Airflow <code>drift_check</code> task uses
+        (validate {results['validate']['XGBoost']['KS']:.3f}).</div>""", unsafe_allow_html=True)
 
-    if xgb_test_ks >= 0.80:
-        st.markdown(f"""<div class='alert-healthy'>
-        ✅ <strong style='color:#3fb950;'>Model Healthy</strong> — XGBoost KS {xgb_test_ks:.3f} on test set · {ks_drop:.3f} validate→test degradation (concept drift expected in OOT split)
-        </div>""", unsafe_allow_html=True)
-    elif xgb_test_ks >= 0.75:
-        st.markdown(f"""<div class='alert-warning'>
-        ⚠️ <strong style='color:#e3b341;'>Monitor Closely</strong> — XGBoost KS {xgb_test_ks:.3f} · approaching retraining threshold (0.75)
-        </div>""", unsafe_allow_html=True)
-    else:
-        st.markdown(f"""<div class='alert-critical'>
-        🚨 <strong style='color:#f85149;'>DRIFT ALERT</strong> — XGBoost KS {xgb_test_ks:.3f} below threshold 0.75 · Champion-challenger review required
-        </div>""", unsafe_allow_html=True)
+    c = st.columns(3) + st.columns(3)
+    card(c[0], "Fraud caught", pct(xgb_biz['Recall']), f"{xgb_biz['TP']} of {xgb_biz['TP'] + xgb_biz['FN']} frauds", solid=True)
+    card(c[1], "Alert precision", pct(xgb_biz['Precision']), f"{xgb_biz['FP']} false alarms")
+    card(c[2], "Alerts per 10k", f"{xgb_biz['Flag_rate'] * 1e4:.0f}", "Manual review load")
+    card(c[3], "KS statistic", f"{xgb_test['KS']:.3f}", "Ranking separation")
+    card(c[4], "AUPRC", f"{xgb_test['AUPRC']:.3f}",
+         f"{xgb_test['AUPRC'] / splits['test']['fraud_rate']:.0f}× random baseline")
+    card(c[5], "Business cost", f"£{xgb_biz['Cost']:,.0f}",
+         f"<span class='chip-orange'>missed fraud £{xgb_biz['FN'] * COST_FN:,}</span>")
 
-    st.markdown("")
-
-    # ── champion KPIs ──
-    st.markdown("<p class='section-eyebrow'>Champion Model — XGBoost · Test Set Performance</p>", unsafe_allow_html=True)
-
-    xgb = results['test']['XGBoost']
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-
-    kpis = [
-        ("KS Statistic", f"{xgb['KS']:.3f}", "Primary discrimination", True),
-        ("AUPRC", f"{xgb['AUPRC']:.3f}", "vs 0.001 baseline (+758x)", True),
-        ("F1 Score", f"{xgb['F1']:.3f}", "At optimal threshold", True),
-        ("Precision", f"{xgb['Precision']:.3f}", "Zero false positives", True),
-        ("Fraud Catch Rate", f"{xgb['Fraud_catch_rate']:.1%}", "At F1 threshold", True),
-        ("Business Cost", f"£{xgb['Business_cost']:,.0f}", "At cost threshold", False),
-    ]
-
-    for col, (label, value, sub, pos) in zip([col1,col2,col3,col4,col5,col6], kpis):
-        delta_class = "metric-delta-pos" if pos else "metric-delta-neg"
-        col.markdown(f"""
-        <div class='metric-card'>
-            <div class='metric-label'>{label}</div>
-            <div class='metric-value'>{value}</div>
-            <div class='{delta_class}'>{sub}</div>
-        </div>""", unsafe_allow_html=True)
-
-    st.divider()
-
-    # ── model comparison table ──
-    st.markdown("<p class='section-eyebrow'>Model Comparison — Test Set</p>", unsafe_allow_html=True)
-
+    eyebrow("Model comparison — test set")
     rows = []
     for m in models_list:
-        t = results['test'][m]
-        v = results['validate'][m]
+        t, v, b = results['test'][m], results['validate'][m], at_biz['test'][m]
         rows.append({
-            'Model': m,
-            'Champion': '👑' if m == 'XGBoost' else '',
-            'Val KS': v['KS'],
-            'Test KS': t['KS'],
-            'KS Drop': round(v['KS'] - t['KS'], 4),
-            'Test AUPRC': t['AUPRC'],
-            'Test F1': t['F1'],
-            'Test Precision': t['Precision'],
-            'Test Recall': t['Recall'],
-            'Biz Cost £': int(t['Business_cost']),
+            'Model': m + (' · champion' if m == 'XGBoost' else ''),
+            'Validate KS': v['KS'], 'Test KS': t['KS'], 'Test AUPRC': t['AUPRC'],
+            'Catch rate @ threshold': b['Recall'], 'Precision @ threshold': b['Precision'],
+            'Share flagged': b['Flag_rate'], 'Cost @ threshold (£)': b['Cost'],
         })
-
-    df = pd.DataFrame(rows).set_index('Model')
     st.dataframe(
-        df.style.background_gradient(subset=['Test KS', 'Test AUPRC', 'Test F1'], cmap='Blues')
-               .background_gradient(subset=['KS Drop'], cmap='Reds_r')
-               .format({'Val KS': '{:.4f}', 'Test KS': '{:.4f}', 'KS Drop': '{:.4f}',
-                        'Test AUPRC': '{:.4f}', 'Test F1': '{:.4f}',
-                        'Test Precision': '{:.4f}', 'Test Recall': '{:.4f}',
-                        'Biz Cost £': '£{:,}'}),
-        use_container_width=True
+        pd.DataFrame(rows).set_index('Model'),
+        width="stretch",
+        column_config={
+            'Validate KS': st.column_config.NumberColumn(format="%.3f"),
+            'Test KS': st.column_config.NumberColumn(format="%.3f"),
+            'Test AUPRC': st.column_config.NumberColumn(format="%.3f"),
+            'Catch rate @ threshold': st.column_config.NumberColumn(format="percent"),
+            'Precision @ threshold': st.column_config.NumberColumn(format="percent"),
+            'Share flagged': st.column_config.NumberColumn(format="percent"),
+            'Cost @ threshold (£)': st.column_config.NumberColumn(format="£%,.0f"),
+        },
     )
 
-    st.divider()
-
-    # ── validate vs test KS grouped bar ──
-    st.markdown("<p class='section-eyebrow'>Validate → Test KS Degradation (Concept Drift)</p>", unsafe_allow_html=True)
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=models_list,
-        y=[results['validate'][m]['KS'] for m in models_list],
-        name='Validate', marker_color=COLORS['validate'],
-        text=[f"{results['validate'][m]['KS']:.3f}" for m in models_list],
-        textposition='outside', textfont=dict(color='#e6edf3', size=11)
-    ))
-    fig.add_trace(go.Bar(
-        x=models_list,
-        y=[results['test'][m]['KS'] for m in models_list],
-        name='Test', marker_color=COLORS['test'],
-        text=[f"{results['test'][m]['KS']:.3f}" for m in models_list],
-        textposition='outside', textfont=dict(color='#e6edf3', size=11)
-    ))
-    fig.add_hline(y=0.75, line_dash='dash', line_color=COLORS['threshold'], line_width=1.5,
-                  annotation_text='KS < 0.75 → retrain trigger', annotation_font_color=COLORS['threshold'],
-                  annotation_position='bottom right')
-    fig.update_layout(
-        **PLOT_CONFIG,
-        barmode='group',
-        title=dict(text='KS Statistic: Validate vs Test — OOT Concept Drift', font=dict(color='#e6edf3', size=13)),
-        yaxis=dict(range=[0, 1.05], gridcolor=COLORS['grid'], title='KS Statistic'),
-        xaxis=dict(gridcolor=COLORS['grid']),
-        legend=dict(bgcolor='#161b22', bordercolor='#30363d', borderwidth=1),
-        height=380
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════
-# PAGE 2 — MODEL DISCRIMINATION
-# ═══════════════════════════════════════════════
-elif page == "🎯 Model Discrimination":
-
-    st.markdown("## Model Discrimination Analysis")
-    st.markdown("<p style='color:#8b949e;'>KS curves · AUPRC · Score separation · Confusion matrices</p>", unsafe_allow_html=True)
-
-    # ── KS curves (simulated from metrics — use actual curve shape) ──
-    st.markdown("<p class='section-eyebrow'>KS Curves — Cumulative Fraud vs Legitimate Separation</p>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e;font-size:0.85rem;'>KS statistic = maximum vertical distance between fraud and legitimate cumulative distributions. Higher = better separation at a single threshold.</p>", unsafe_allow_html=True)
-
-    # simulate KS curves from known KS values
-    # (in production these would be saved from pipeline)
-    fig = make_subplots(
-        rows=1, cols=3,
-        subplot_titles=[f"{m}<br>KS = {results['validate'][m]['KS']:.4f}" for m in models_list]
-    )
-
-    for i, model in enumerate(models_list, 1):
-        ks = results['validate'][model]['KS']
-        n = 500
-
-        # simulate realistic cumulative curves given the KS
-        x = np.linspace(0, 1, n)
-        # fraud curve rises faster — shape determined by KS
-        fraud_curve = np.where(x < 0.15, x * (ks / 0.15), ks + (1 - ks) * (x - 0.15) / 0.85)
-        fraud_curve = np.clip(fraud_curve, 0, 1)
-        legit_curve = x  # diagonal
-
-        ks_idx = np.argmax(np.abs(fraud_curve - legit_curve))
-
-        fig.add_trace(go.Scatter(x=x, y=fraud_curve, name='Fraud' if i==1 else '',
-                                  line=dict(color=COLORS['fraud'], width=2),
-                                  showlegend=(i==1)), row=1, col=i)
-        fig.add_trace(go.Scatter(x=x, y=legit_curve, name='Legitimate' if i==1 else '',
-                                  line=dict(color=COLORS['legit'], width=2),
-                                  showlegend=(i==1)), row=1, col=i)
-        fig.add_trace(go.Scatter(
-            x=[x[ks_idx], x[ks_idx]],
-            y=[legit_curve[ks_idx], fraud_curve[ks_idx]],
-            mode='lines',
-            line=dict(color='white', width=1.5, dash='dot'),
-            name=f'KS={ks:.3f}' if i==1 else '',
-            showlegend=(i==1)
-        ), row=1, col=i)
-
-    fig.update_layout(
-        **PLOT_CONFIG,
-        height=350,
-        title=dict(text='KS Curves — Validate Set', font=dict(color='#e6edf3', size=13)),
-    )
-    for i in range(1, 4):
-        fig.update_xaxes(gridcolor=COLORS['grid'], row=1, col=i)
-        fig.update_yaxes(gridcolor=COLORS['grid'], row=1, col=i)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.divider()
-
-    # ── AUPRC comparison ──
-    st.markdown("<p class='section-eyebrow'>AUPRC — Precision-Recall Area (Validate vs Test)</p>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e;font-size:0.85rem;'>AUPRC preferred over ROC-AUC for imbalanced fraud data. Baseline AUPRC = 0.131% (random classifier). XGBoost achieves <strong style='color:#388bfd;'>669x lift</strong> on validate set.</p>", unsafe_allow_html=True)
-
-    fig2 = go.Figure()
-    baseline = 0.00131
-
-    for m in models_list:
-        val_auprc = results['validate'][m]['AUPRC']
-        test_auprc = results['test'][m]['AUPRC']
-
-        fig2.add_trace(go.Bar(
-            x=[f'{m}<br>Validate', f'{m}<br>Test'],
-            y=[val_auprc, test_auprc],
-            name=m,
-            marker_color=COLORS[m],
-            text=[f'{val_auprc:.4f}<br>{val_auprc/baseline:.0f}x baseline',
-                  f'{test_auprc:.4f}<br>{test_auprc/baseline:.0f}x baseline'],
-            textposition='outside',
-            textfont=dict(color='#e6edf3', size=10)
-        ))
-
-    fig2.add_hline(y=baseline, line_dash='dot', line_color='#8b949e', line_width=1,
-                   annotation_text=f'Random baseline ({baseline:.4f})',
-                   annotation_font_color='#8b949e')
-    fig2.update_layout(
-        **PLOT_CONFIG,
-        title=dict(text='AUPRC — All Models, Both Sets', font=dict(color='#e6edf3', size=13)),
-        yaxis=dict(range=[0, 1.1], gridcolor=COLORS['grid'], title='AUPRC'),
-        xaxis=dict(gridcolor=COLORS['grid']),
-        height=400,
-        barmode='group',
-        legend=dict(bgcolor='#161b22', bordercolor='#30363d')
-    )
-    st.plotly_chart(fig2, use_container_width=True)
-
-    st.divider()
-
-    # ── confusion matrices ──
-    st.markdown("<p class='section-eyebrow'>Confusion Matrices — Test Set · F1 Optimal Threshold</p>", unsafe_allow_html=True)
-
-    cols = st.columns(3)
-    for col, model in zip(cols, models_list):
-        t = results['test'][model]
-        cm = np.array([[t['TN'], t['FP']], [t['FN'], t['TP']]])
-
-        fig_cm = go.Figure(go.Heatmap(
-            z=cm,
-            x=['Predicted Legit', 'Predicted Fraud'],
-            y=['Actual Legit', 'Actual Fraud'],
-            colorscale=[[0, '#0d1117'], [0.5, '#1f3d6e'], [1, '#388bfd']],
-            showscale=False,
-            text=[[f'{cm[i][j]:,}' for j in range(2)] for i in range(2)],
-            texttemplate='%{text}',
-            textfont=dict(size=18, color='white')
-        ))
-        is_champ = model == 'XGBoost'
-    
-        cm_config = {**PLOT_CONFIG, 'margin': dict(l=60, r=20, t=70, b=40)}
-        fig_cm.update_layout(
-            **cm_config,
-            title=dict(text=f"{'👑 ' if is_champ else ''}{model}<br>F1={t['F1']:.3f} | P={t['Precision']:.3f} | R={t['Recall']:.3f}",
-                       font=dict(color='#e6edf3', size=11)),
-            height=300,
-        )
-        col.plotly_chart(fig_cm, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════
-# PAGE 3 — BUSINESS THRESHOLD
-# ═══════════════════════════════════════════════
-elif page == "💷 Business Threshold":
-
-    st.markdown("## Business Cost Threshold Analysis")
-    st.markdown("<p style='color:#8b949e;'>Why the operational threshold (7.84%) is 12.6x lower than F1 optimal (99.29%)</p>", unsafe_allow_html=True)
-
-    champion = results['champion']
-    cost_fn = champion['cost_fn']
-    cost_fp = champion['cost_fp']
-    biz_threshold = champion['business_threshold']
-    xgb = results['test']['XGBoost']
-
-    # ── cost asymmetry explanation ──
-    col1, col2, col3 = st.columns(3)
-
-    col1.markdown(f"""
-    <div class='metric-card'>
-        <div class='metric-label'>Cost per Missed Fraud (FN)</div>
-        <div class='metric-value' style='color:#f85149;'>£{cost_fn}</div>
-        <div class='metric-delta-neg'>Average fraud amount missed</div>
-    </div>""", unsafe_allow_html=True)
-
-    col2.markdown(f"""
-    <div class='metric-card'>
-        <div class='metric-label'>Cost per False Alarm (FP)</div>
-        <div class='metric-value' style='color:#e3b341;'>£{cost_fp}</div>
-        <div class='metric-delta-pos'>Investigation + customer friction</div>
-    </div>""", unsafe_allow_html=True)
-
-    col3.markdown(f"""
-    <div class='metric-card'>
-        <div class='metric-label'>Cost Asymmetry Ratio</div>
-        <div class='metric-value' style='color:#388bfd;'>{cost_fn//cost_fp}:1</div>
-        <div class='metric-delta-pos'>Missing fraud vs false alarm</div>
-    </div>""", unsafe_allow_html=True)
-
-    st.divider()
-
-    # ── threshold gap ──
-    st.markdown("<p class='section-eyebrow'>The 12.6x Threshold Gap — Why It Matters</p>", unsafe_allow_html=True)
+    split = st.radio("Dataset", ["test", "validate"], horizontal=True,
+                     format_func=lambda s: f"{s.title()} set")
 
     col1, col2 = st.columns(2)
-
     with col1:
-        fig_thresh = go.Figure()
-
-        thresholds_viz = [biz_threshold, xgb['F1_threshold']]
-        labels_viz = [f'Business Optimal\n£{biz_threshold:.4f}', f'F1 Statistical\n£{xgb["F1_threshold"]:.4f}']
-        colors_viz = [COLORS['fraud'], COLORS['validate']]
-
-        fig_thresh.add_trace(go.Bar(
-            x=labels_viz,
-            y=thresholds_viz,
-            marker_color=colors_viz,
-            text=[f'{t:.4f}' for t in thresholds_viz],
-            textposition='outside',
-            textfont=dict(color='#e6edf3', size=14, family='Courier New')
-        ))
-
-        fig_thresh.add_annotation(
-            x=0.5, y=max(thresholds_viz) * 0.5,
-            xref='paper', yref='y',
-            text=f'12.6× gap',
-            font=dict(size=20, color='white', family='Courier New'),
-            showarrow=False
+        eyebrow("KS curves — fraud vs legitimate captured")
+        fig = go.Figure()
+        for m in models_list:
+            k = dash['ks_curves'][split][m]
+            gap = np.array(k['fraud']) - np.array(k['legit'])
+            fig.add_trace(go.Scatter(x=k['population'], y=k['fraud'], name=f"{m} — fraud",
+                                     line=dict(color=COLORS[m], width=2.5)))
+            fig.add_trace(go.Scatter(x=k['population'], y=k['legit'], name=f"{m} — legit",
+                                     line=dict(color=COLORS[m], width=1.2, dash='dot'), showlegend=False))
+            i = int(gap.argmax())
+            fig.add_trace(go.Scatter(x=[k['population'][i]] * 2, y=[k['legit'][i], k['fraud'][i]],
+                                     mode='lines', line=dict(color=COLORS[m], width=1, dash='dash'),
+                                     showlegend=False, hoverinfo='skip'))
+        fig.update_layout(
+            **PLOT_CONFIG, height=420,
+            xaxis=axis(type='log', title='Share reviewed, highest score first (log)'),
+            yaxis=axis(title='Cumulative share captured', range=[0, 1.02]),
+            legend=legend(orientation='h', y=-0.28),
         )
-
-        fig_thresh.update_layout(
-            **PLOT_CONFIG,
-            title=dict(text='Business vs Statistical Threshold', font=dict(color='#e6edf3', size=13)),
-            yaxis=dict(gridcolor=COLORS['grid'], title='Threshold Value'),
-            height=350
-        )
-        st.plotly_chart(fig_thresh, use_container_width=True)
+        chart(fig)
+        caption("Solid = fraud captured, dotted = legitimate captured. KS is the largest vertical gap (dashed).")
 
     with col2:
-        st.markdown("""
-        <div class='metric-card' style='margin-top:0;'>
-            <div class='metric-label'>Why the gap exists</div>
-            <div style='color:#8b949e;font-size:0.85rem;line-height:1.8;margin-top:0.5rem;'>
-            <strong style='color:#e6edf3;'>F1 threshold (0.9929)</strong><br>
-            Optimises statistical balance between precision and recall. 
-            Treats every error equally. Wrong for fraud detection.<br><br>
-            <strong style='color:#e6edf3;'>Business threshold (0.0784)</strong><br>
-            Minimises £ cost given asymmetric error costs (£150 FN vs £10 FP). 
-            Set low to catch more fraud — the cost of missing fraud is 15× 
-            higher than a false alarm.<br><br>
-            <strong style='color:#f85149;'>Implication</strong><br>
-            Any model deployed at the F1 threshold would miss 28.8% more 
-            fraud than the business threshold allows. 
-            In a real bank, this is a governance failure.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        eyebrow("Precision–recall curves")
+        fig2 = go.Figure()
+        for m in models_list:
+            p = dash['pr_curves'][split][m]
+            fig2.add_trace(go.Scatter(x=p['recall'], y=p['precision'], name=f"{m} (AUPRC {results[split][m]['AUPRC']:.3f})",
+                                      line=dict(color=COLORS[m], width=2.5)))
+        base = splits[split]['fraud_rate']
+        fig2.add_hline(y=base, line_dash='dot', line_color=INK,
+                       annotation_text=f'Random baseline ({base:.3%})', annotation_font_color=MUTED)
+        fig2.update_layout(
+            **PLOT_CONFIG, height=420,
+            xaxis=axis(title='Recall (fraud caught)', range=[0, 1.02]),
+            yaxis=axis(title='Precision', range=[0, 1.02]),
+            legend=legend(orientation='h', y=-0.28),
+        )
+        chart(fig2)
 
-    st.divider()
-
-    # ── cost curve simulation ──
-    st.markdown("<p class='section-eyebrow'>Business Cost Curve — XGBoost (Validate Set)</p>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e;font-size:0.85rem;'>Cost = (missed fraud × £150) + (false alarms × £10). Minimum cost occurs at 7.84% threshold — far left of F1 optimal.</p>", unsafe_allow_html=True)
-
-    val_xgb = results['validate']['XGBoost']
-    thresholds_sim = np.linspace(0.001, 0.999, 500)
-
-    # reconstruct approximate cost curve using validate metrics
-    total_fraud_val = 56
-    total_legit_val = 42665
-
-    costs_sim = []
-    for t in thresholds_sim:
-        recall_approx = max(0, min(1, val_xgb['Recall'] * (1 - (t - val_xgb['Business_threshold']) * 2)))
-        precision_approx = min(1, max(0.01, val_xgb['Precision'] * (t / val_xgb['F1_threshold']) ** 0.3))
-
-        tp = recall_approx * total_fraud_val
-        fn = (1 - recall_approx) * total_fraud_val
-        fp = (1 - precision_approx) * tp / max(precision_approx, 0.01)
-
-        cost = fn * cost_fn + fp * cost_fp
-        costs_sim.append(max(0, cost))
-
-    costs_sim = np.array(costs_sim)
-    min_idx = costs_sim.argmin()
-
-    fig_cost = go.Figure()
-    fig_cost.add_trace(go.Scatter(
-        x=thresholds_sim, y=costs_sim,
-        fill='tozeroy', fillcolor='rgba(248,81,73,0.08)',
-        line=dict(color=COLORS['fraud'], width=2),
-        name='Total business cost'
-    ))
-    fig_cost.add_vline(x=biz_threshold, line_dash='dash', line_color='#3fb950', line_width=2,
-                       annotation_text=f'Business optimal ({biz_threshold:.4f})',
-                       annotation_font_color='#3fb950')
-    fig_cost.add_vline(x=xgb['F1_threshold'], line_dash='dash', line_color=COLORS['validate'], line_width=2,
-                       annotation_text=f'F1 optimal ({xgb["F1_threshold"]:.4f})',
-                       annotation_font_color=COLORS['validate'])
-
-    fig_cost.update_layout(
-        **PLOT_CONFIG,
-        title=dict(text='Business Cost vs Decision Threshold — XGBoost', font=dict(color='#e6edf3', size=13)),
-        xaxis=dict(gridcolor=COLORS['grid'], title='Threshold', range=[0, 1]),
-        yaxis=dict(gridcolor=COLORS['grid'], title='Estimated Cost (£)'),
-        height=380,
-        legend=dict(bgcolor='#161b22', bordercolor='#30363d')
-    )
-    st.plotly_chart(fig_cost, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════
-# PAGE 4 — CONCEPT DRIFT
-# ═══════════════════════════════════════════════
-elif page == "📉 Concept Drift":
-
-    st.markdown("## Concept Drift Analysis")
-    st.markdown("<p style='color:#8b949e;'>OOT validation reveals fraud pattern evolution across the 48-hour window</p>", unsafe_allow_html=True)
-
-    # ── drift summary cards ──
-    col1, col2, col3, col4 = st.columns(4)
-
-    drift_stats = [
-        ("Fraud Rate · Train", "0.193%", "Hours 0-33"),
-        ("Fraud Rate · Validate", "0.131%", "Hours 34-40"),
-        ("Fraud Rate · Test", "0.122%", "Hours 41-48"),
-        ("Total KS Degradation", "0.121", "Train→Test decline"),
-    ]
-
-    for col, (label, val, sub) in zip([col1, col2, col3, col4], drift_stats):
+    eyebrow(f"Confusion matrices — {split} set at deployment threshold {THRESHOLD:.4f}")
+    cols = st.columns(3)
+    for col, m in zip(cols, models_list):
+        b = at_biz[split][m]
         col.markdown(f"""
-        <div class='metric-card'>
-            <div class='metric-label'>{label}</div>
-            <div class='metric-value' style='font-size:1.5rem;'>{val}</div>
-            <div style='color:#8b949e;font-size:0.75rem;'>{sub}</div>
+        <p class='cm-title'>{m}{' · champion' if m == 'XGBoost' else ''}</p>
+        <p class='mono-label' style='margin-bottom:6px'>Precision {b['Precision']:.3f} · recall {b['Recall']:.3f}</p>
+        <div class='cm'>
+            <div class='h'></div><div class='h mono-label'>Predicted legit</div><div class='h mono-label'>Predicted fraud</div>
+            <div class='h mono-label'>Actual legit</div><div><span class='v'>{b['TN']:,}</span></div><div><span class='v'>{b['FP']:,}</span></div>
+            <div class='h mono-label'>Actual fraud</div><div><span class='v'>{b['FN']:,}</span></div><div class='tp'><span class='v'>{b['TP']:,}</span></div>
         </div>""", unsafe_allow_html=True)
 
-    st.divider()
-
-    # ── fraud rate evolution ──
-    st.markdown("<p class='section-eyebrow'>Fraud Rate Across OOT Splits</p>", unsafe_allow_html=True)
-
-    fig1 = go.Figure()
-
-    splits = ['Train\n(0-33h)', 'Validate\n(34-40h)', 'Test\n(41-48h)']
-    fraud_rates = [0.00193, 0.00131, 0.00122]
-    split_colors = ['#388bfd', '#e3b341', '#f85149']
-
-    fig1.add_trace(go.Bar(
-        x=splits, y=[r * 100 for r in fraud_rates],
-        marker_color=split_colors,
-        text=[f'{r*100:.3f}%' for r in fraud_rates],
-        textposition='outside',
-        textfont=dict(color='#e6edf3', size=13, family='Courier New')
-    ))
-
-    fig1.add_annotation(
-        x=0, y=0.193 * 1.15,
-        text='Concept drift confirmed:<br>fraud rate declining over time',
-        font=dict(color='#8b949e', size=10),
-        showarrow=False, xref='x', yref='y'
+    n_test = splits['test']['fraud']
+    judgement(
+        f"Read every test figure with the sample size in mind: there are {n_test} frauds in the test window, so one "
+        f"case moves recall by {100 / n_test:.1f} points. Small gaps between models in this table are within that noise.",
+        "KS and AUPRC say how well the model ranks. They say nothing about whether a single cut-off produces usable "
+        "alerts — that is what the threshold and champion pages are for.",
     )
 
-    fig1.update_layout(
-        **PLOT_CONFIG,
-        title=dict(text='Fraud Rate Evolution — Confirms OOT Concept Drift', font=dict(color='#e6edf3', size=13)),
-        yaxis=dict(gridcolor=COLORS['grid'], title='Fraud Rate (%)'),
-        height=380
+
+# ═══════════════════════════════════════════════
+# PAGE 3 — THRESHOLD & COST
+# ═══════════════════════════════════════════════
+elif page == "Threshold & cost":
+
+    header("03 · Threshold & cost", "Where to draw the line",
+           "F1 treats a missed fraud and a false alarm as equally bad. They are not, so the deployment threshold "
+           "minimises expected cost instead. It is chosen on the validate set only and then frozen for the test set.")
+
+    st.markdown(f"<p class='notice' style='font-family:var(--mono);display:inline-block;border-left-width:1.5px;'>"
+                f"cost = missed fraud × £{COST_FN} + false alarms × £{COST_FP}</p>", unsafe_allow_html=True)
+
+    c = st.columns(4)
+    card(c[0], "Deployment threshold", f"{THRESHOLD:.4f}", "Cost-optimal on validate", solid=True)
+    card(c[1], "F1-optimal threshold", f"{champion['f1_threshold']:.4f}", "Also chosen on validate")
+    card(c[2], "Cost per missed fraud", f"£{COST_FN}", "Assumed average loss")
+    card(c[3], "Cost per false alarm", f"£{COST_FP}", "Manual review + friction")
+
+    eyebrow("Try a threshold")
+    cc = dash['cost_curves']
+    grid = cc['validate']['threshold']
+    default = min(grid, key=lambda t: abs(t - THRESHOLD))
+    t = st.select_slider("Decision threshold — flag when score ≥ threshold", options=grid, value=default,
+                         format_func=lambda v: f"{v:.4f}")
+    i = grid.index(t)
+
+    for split in ['validate', 'test']:
+        d = cc[split]
+        frauds = d['tp'][i] + d['fn'][i]
+        alerts = d['tp'][i] + d['fp'][i]
+        with st.container():
+            eyebrow(f"{split.title()} set · {frauds} frauds in {splits[split]['rows']:,} transactions")
+            k = st.columns(3)
+            card(k[0], "Fraud caught", f"{d['tp'][i]} of {frauds}", f"{pct(d['tp'][i] / frauds)} · {d['fn'][i]} missed",
+                 solid=(split == 'validate'))
+            card(k[1], "False alarms", f"{d['fp'][i]:,}", f"precision {pct(d['tp'][i] / alerts)}" if alerts else "no alerts")
+            card(k[2], "Total cost", f"£{d['cost'][i]:,.0f}",
+                 f"<span class='chip-orange'>missed £{d['fn'][i] * COST_FN:,}</span>")
+
+    fig = go.Figure()
+    for split in ['validate', 'test']:
+        fig.add_trace(go.Scatter(x=cc[split]['threshold'], y=cc[split]['cost'], name=f"{split.title()} set",
+                                 line=dict(color=COLORS[split], width=2.5)))
+    fig.add_vline(x=THRESHOLD, line_color=ORANGE, line_width=2.5,
+                  annotation_text=f'cost-optimal {THRESHOLD:.4f}', annotation_font_color=INK,
+                  annotation_position='top left')
+    fig.add_vline(x=champion['f1_threshold'], line_dash='dot', line_color=INK, line_width=1.5,
+                  annotation_text=f"F1-optimal {champion['f1_threshold']:.4f}", annotation_font_color=INK,
+                  annotation_position='top left')
+    fig.add_vline(x=t, line_color=INK, line_width=1)
+    fig.update_layout(
+        **PLOT_CONFIG, height=420,
+        xaxis=axis(type='log', title='Threshold (log scale)'),
+        yaxis=axis(title='Cost (£)', range=[0, 8000]),
+        legend=legend(orientation='h', y=-0.22),
     )
-    st.plotly_chart(fig1, use_container_width=True)
+    chart(fig)
 
-    st.divider()
+    eyebrow("The two thresholds, frozen")
+    v_biz, v_f1 = at_biz['validate']['XGBoost'], at_f1['validate']
+    t_biz, t_f1 = at_biz['test']['XGBoost'], at_f1['test']
+    table = pd.DataFrame([
+        {'Threshold': f"Cost-optimal ({THRESHOLD:.4f})", 'Set': 'Validate', 'Caught': v_biz['Recall'], 'Precision': v_biz['Precision'], 'Cost (£)': v_biz['Cost']},
+        {'Threshold': f"F1-optimal ({champion['f1_threshold']:.4f})", 'Set': 'Validate', 'Caught': v_f1['Recall'], 'Precision': v_f1['Precision'], 'Cost (£)': v_f1['Cost']},
+        {'Threshold': f"Cost-optimal ({THRESHOLD:.4f})", 'Set': 'Test', 'Caught': t_biz['Recall'], 'Precision': t_biz['Precision'], 'Cost (£)': t_biz['Cost']},
+        {'Threshold': f"F1-optimal ({champion['f1_threshold']:.4f})", 'Set': 'Test', 'Caught': t_f1['Recall'], 'Precision': t_f1['Precision'], 'Cost (£)': t_f1['Cost']},
+    ])
+    st.dataframe(table, hide_index=True, width="stretch", column_config={
+        'Caught': st.column_config.NumberColumn(format="percent"),
+        'Precision': st.column_config.NumberColumn(format="percent"),
+        'Cost (£)': st.column_config.NumberColumn(format="£%,.0f"),
+    })
+    points = (v_biz['Recall'] - v_f1['Recall']) * 100
+    saving = 1 - v_biz['Cost'] / v_f1['Cost']
+    st.markdown(f"""<div class='honest'><p class='mono-label'>Stated honestly</p><p>
+    On validate, the cost-optimal threshold caught {points:.1f} points more fraud and cut cost by {pct(saving, 0)}.
+    On the later test window it did not hold up: it caught {t_biz['TP'] - t_f1['TP']} more fraud than the F1 threshold
+    for {t_biz['FP'] - t_f1['FP']} more false alarms, and cost £{t_biz['Cost'] - t_f1['Cost']:,.0f} more.
+    With only {splits['validate']['fraud']} validate frauds, the cost-optimal point is unstable over time.
+    That is the case for recalibrating the threshold on a rolling window and monitoring alert precision alongside KS.
+    </p></div>""", unsafe_allow_html=True)
 
-    # ── KS degradation across models ──
-    st.markdown("<p class='section-eyebrow'>KS Statistic Degradation — Validate → Test</p>", unsafe_allow_html=True)
-
-    fig2 = go.Figure()
-
-    for model in models_list:
-        val_ks = results['validate'][model]['KS']
-        test_ks = results['test'][model]['KS']
-        drop = val_ks - test_ks
-        drop_pct = drop / val_ks * 100
-
-        fig2.add_trace(go.Scatter(
-            x=['Validate', 'Test'],
-            y=[val_ks, test_ks],
-            mode='lines+markers+text',
-            name=model,
-            line=dict(color=COLORS[model], width=2.5),
-            marker=dict(size=10, color=COLORS[model]),
-            text=['', f'↓{drop:.3f} ({drop_pct:.1f}%)'],
-            textposition='middle right',
-            textfont=dict(color=COLORS[model], size=10)
-        ))
-
-    fig2.add_hline(y=0.75, line_dash='dash', line_color=COLORS['threshold'], line_width=1.5,
-                   annotation_text='Retraining trigger (KS < 0.75)',
-                   annotation_font_color=COLORS['threshold'])
-    fig2.add_hrect(y0=0, y1=0.75, fillcolor='rgba(248,81,73,0.05)', line_width=0)
-
-    fig2.update_layout(
-        **PLOT_CONFIG,
-        title=dict(text='KS Degradation: All Models', font=dict(color='#e6edf3', size=13)),
-        yaxis=dict(range=[0.7, 1.0], gridcolor=COLORS['grid'], title='KS Statistic'),
-        height=400,
-        legend=dict(bgcolor='#161b22', bordercolor='#30363d')
+    judgement(
+        "Choosing the threshold on the test set would have produced a better-looking number and a meaningless one, "
+        "so it was fixed on validate first and the test result is reported as it came out.",
+        f"The costs (£{COST_FN} per missed fraud, £{COST_FP} per false alarm) are assumptions, not measured figures, "
+        f"and the optimal threshold depends only on their ratio. A bank would agree that ratio with its "
+        f"fraud-operations and complaints teams before trusting the optimiser.",
     )
-    st.plotly_chart(fig2, use_container_width=True)
 
-    st.divider()
 
-    # ── intraday drift evidence ──
-    st.markdown("<p class='section-eyebrow'>Intraday Fraud Rate Evidence — Hour-Level Drift</p>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e;font-size:0.85rem;'>Hour 26 fraud rate is 88% higher than Hour 2 — same hour-of-day, different day. This confirms temporal fraud pattern shift, not seasonal effect.</p>", unsafe_allow_html=True)
+# ═══════════════════════════════════════════════
+# PAGE 4 — DRIFT
+# ═══════════════════════════════════════════════
+elif page == "Drift":
 
-    hours = list(range(0, 48))
-    np.random.seed(42)
-    base_fraud = 0.0017
-    fraud_rates_hourly = []
-    for h in hours:
-        if h < 24:
-            rate = base_fraud * (1 + 0.3 * np.sin(h * np.pi / 12) + np.random.normal(0, 0.15))
-        else:
-            rate = base_fraud * (1 + 0.5 * np.sin((h-24) * np.pi / 12) + np.random.normal(0, 0.15))
-        fraud_rates_hourly.append(max(0, rate))
+    header("04 · Drift & monitoring", "What a monitor should catch",
+           "Out-of-time validation means each split is a later slice of time, so differences between them are real "
+           "temporal shift, not sampling noise from a random split.")
 
-    fraud_rates_hourly[2] = 0.017
-    fraud_rates_hourly[26] = 0.032
+    c = st.columns(4)
+    card(c[0], "Fraud rate · train", pct(splits['train']['fraud_rate'], 3), f"Hours 0–{hours['validate_start']:.1f}", solid=True)
+    card(c[1], "Fraud rate · validate", pct(splits['validate']['fraud_rate'], 3),
+         f"Hours {hours['validate_start']:.1f}–{hours['test_start']:.1f}")
+    card(c[2], "Fraud rate · test", pct(splits['test']['fraud_rate'], 3), f"Hours {hours['test_start']:.1f}–{WINDOW_HOURS}")
+    ks_drop = results['validate']['XGBoost']['KS'] - results['test']['XGBoost']['KS']
+    card(c[3], "XGBoost KS drop", f"{ks_drop:.3f}", "Validate → test")
 
-    fig3 = go.Figure()
-    fig3.add_trace(go.Scatter(
-        x=hours[:24], y=[r*100 for r in fraud_rates_hourly[:24]],
-        fill='tozeroy', fillcolor='rgba(56,139,253,0.1)',
-        line=dict(color=COLORS['validate'], width=2),
-        name='Day 1'
-    ))
-    fig3.add_trace(go.Scatter(
-        x=list(range(24, 48)), y=[r*100 for r in fraud_rates_hourly[24:]],
-        fill='tozeroy', fillcolor='rgba(248,81,73,0.1)',
-        line=dict(color=COLORS['fraud'], width=2),
-        name='Day 2'
-    ))
-
-    fig3.add_annotation(x=2, y=0.017*100*1.1, text='Hour 2: 1.70%',
-                        font=dict(color=COLORS['validate'], size=10), showarrow=True,
-                        arrowcolor=COLORS['validate'], arrowsize=0.7)
-    fig3.add_annotation(x=26, y=0.032*100*1.1, text='Hour 26: 3.20%<br>(+88% vs Hour 2)',
-                        font=dict(color=COLORS['fraud'], size=10), showarrow=True,
-                        arrowcolor=COLORS['fraud'], arrowsize=0.7)
-    fig3.add_vline(x=24, line_dash='dot', line_color='#8b949e', line_width=1,
-                   annotation_text='Day boundary', annotation_font_color='#8b949e')
-
-    fig3.update_layout(
-        **PLOT_CONFIG,
-        title=dict(text='Hourly Fraud Rate — Day 1 vs Day 2 (Drift Evidence)', font=dict(color='#e6edf3', size=13)),
-        xaxis=dict(gridcolor=COLORS['grid'], title='Hour', dtick=4),
-        yaxis=dict(gridcolor=COLORS['grid'], title='Fraud Rate (%)'),
-        height=380,
-        legend=dict(bgcolor='#161b22', bordercolor='#30363d')
+    eyebrow(f"Hourly fraud rate — all {TOTAL_ROWS:,} transactions")
+    h = dash['hourly']
+    rate = np.array(h['fraud_rate']) * 100
+    fig = go.Figure()
+    for x0, x1, name, op in [(0, hours['validate_start'], 'Train', 0.0),
+                             (hours['validate_start'], hours['test_start'], 'Validate', 0.35),
+                             (hours['test_start'], WINDOW_HOURS, 'Test', 0.7)]:
+        fig.add_vrect(x0=x0 - 0.5, x1=x1 - 0.5, fillcolor=SOFT, opacity=op, line_width=0,
+                      annotation_text=name, annotation_position='top left', annotation_font_color=MUTED)
+    fig.add_trace(go.Bar(x=h['hour'], y=rate, marker_color=KEY,
+                         customdata=np.c_[h['fraud'], h['count']],
+                         hovertemplate='Hour %{x}<br>%{y:.2f}% fraud<br>%{customdata[0]} of %{customdata[1]:,}<extra></extra>'))
+    fig.update_layout(
+        **PLOT_CONFIG, height=380, showlegend=False,
+        xaxis=axis(title='Hours since start of window', dtick=4),
+        yaxis=axis(title='Fraud rate (%)'),
     )
-    st.plotly_chart(fig3, use_container_width=True)
+    chart(fig)
+    r2, r26 = h['fraud_rate'][2], h['fraud_rate'][26]
+    caption(f"Fraud clusters in short bursts during the low-volume hours of each day (hours 2–7 and 26–28). "
+            f"Hour 26 ({pct(r26, 2)}) is {r26 / r2 - 1:.0%} higher than the same clock hour on day one "
+            f"(hour 2, {pct(r2, 2)}).")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        eyebrow("Population Stability Index — train vs test")
+        psi = pd.Series(dash['psi']).sort_values()
+        labels = [f"{f}  {v:.3f}" for f, v in psi.items()]
+        fig2 = go.Figure(go.Bar(x=psi.values, y=labels, orientation='h', marker_color=KEY,
+                                hovertemplate='%{y}<extra></extra>'))
+        flagged = [(lab, v) for lab, v in zip(labels, psi.values) if v > 0.25]
+        fig2.add_trace(go.Scatter(x=[v + psi.max() * 0.05 for _, v in flagged], y=[lab for lab, _ in flagged], mode='markers',
+                                  marker=dict(symbol='circle-open', size=16, color=ORANGE, line=dict(width=2.5)),
+                                  hovertemplate='%{y}: significant shift<extra></extra>'))
+        for x, label, pos in [(0.10, 'moderate', 'top left'), (0.25, 'significant', 'top right')]:
+            fig2.add_vline(x=x, line_dash='dash', line_color=INK, line_width=1.2, annotation_position=pos,
+                           annotation_text=label, annotation_font_color=MUTED)
+        fig2.update_layout(**PLOT_CONFIG, height=380, showlegend=False,
+                           xaxis=axis(title='PSI', range=[0, max(psi.max() * 1.25, 0.3)]),
+                           yaxis=axis(tickfont=dict(color=INK)))
+        chart(fig2)
+        caption("PSI for the eight most influential features. Open orange rings mark a significant shift (PSI > 0.25).")
+
+    with col2:
+        eyebrow("KS — validate → test")
+        fig3 = go.Figure()
+        for m in models_list:
+            v, t = results['validate'][m]['KS'], results['test'][m]['KS']
+            fig3.add_trace(go.Scatter(
+                x=['Validate', 'Test'], y=[v, t], mode='lines+markers+text', name=m,
+                line=dict(color=COLORS[m], width=3), marker=dict(size=10),
+                text=['', f'↓{v - t:.3f}'], textposition='middle right', textfont=dict(color=INK),
+            ))
+        fig3.add_hline(y=0.75, line_color=ORANGE, line_width=2, annotation_position='top left',
+                       annotation_text='retraining trigger (KS < 0.75)', annotation_font_color=INK)
+        fig3.update_layout(**PLOT_CONFIG, height=380, yaxis=axis(range=[0.7, 1.0], title='KS'),
+                           xaxis=axis(range=[-0.3, 1.7]), legend=legend(orientation='h', y=-0.15))
+        chart(fig3)
+
+    top_psi = max(dash['psi'], key=dash['psi'].get)
+    judgement(
+        f"The KS trigger still reads healthy ({results['test']['XGBoost']['KS']:.3f} against 0.75), yet {top_psi} has a "
+        f"PSI of {dash['psi'][top_psi]:.2f}: the inputs moved a lot while the ranking held up. The threshold page shows "
+        f"the operating point had already broken. A KS-only trigger would miss both, so a production monitor should "
+        f"also watch PSI and alert precision.",
+        f"The weekly Airflow retraining is demonstrated, not exercised: on a fixed {WINDOW_HOURS}-hour dataset every "
+        f"run sees the same data.",
+    )
 
 
 # ═══════════════════════════════════════════════
 # PAGE 5 — CHAMPION RATIONALE
 # ═══════════════════════════════════════════════
-elif page == "🏆 Champion Rationale":
+elif page == "Champion rationale":
 
-    st.markdown("## Champion Model Selection")
-    st.markdown("<p style='color:#8b949e;'>Why XGBoost was selected over Random Forest despite RF having higher AUPRC</p>", unsafe_allow_html=True)
+    header("05 · Champion", "The leaderboard is not the decision",
+           "Why XGBoost was chosen over Random Forest, even though Random Forest scores higher on test KS and AUPRC.")
 
-    # ── champion badge ──
-    st.markdown("""
-    <div style='background:#0d2033;border:1px solid #1f6feb;border-radius:8px;padding:1.2rem;margin-bottom:1.5rem;'>
-        <span class='champion-badge'>Champion</span>
-        <span style='color:#e6edf3;font-size:1.3rem;font-weight:700;margin-left:0.8rem;'>XGBoost</span>
-        <p style='color:#8b949e;font-size:0.85rem;margin-top:0.5rem;margin-bottom:0;'>
-        Selected for production deployment — best score calibration and zero false positives at operational threshold.
-        Underestimated without hyperparameter tuning. Expected KS improvement from 0.826 → 0.924 with TimeSeriesSplit CV.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ── head to head ──
-    st.markdown("<p class='section-eyebrow'>Head-to-Head — XGBoost vs Random Forest</p>", unsafe_allow_html=True)
+    xgb_b, rf_b, lr_b = (at_biz['test'][m] for m in models_list)
+    st.markdown(f"""<div class='verdict'><p class='mono-label'>Champion · XGBoost</p>
+        <p style='margin:.5rem 0 0;font-size:17px;line-height:1.55;max-width:90ch;color:var(--on-key)'>
+        KS and AUPRC measure <em>ranking</em>. A bank deploys a <em>threshold</em>. At the same deployment threshold
+        ({THRESHOLD:.4f}) on the test set, {pct(xgb_b['Precision'])} of XGBoost's alerts are fraud, against
+        {pct(rf_b['Precision'])} for Random Forest; Logistic Regression flags {pct(lr_b['Flag_rate'])} of all
+        transactions. Only XGBoost's probabilities are calibrated closely enough to the true fraud rate for a single
+        threshold to mean something.</p></div>""", unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
-
-    metrics_compare = ['KS', 'AUPRC', 'F1', 'Precision', 'Recall', 'Fraud_catch_rate']
-    labels_compare = ['KS', 'AUPRC', 'F1', 'Precision', 'Recall', 'Catch Rate']
-
-    xgb_vals = [results['test']['XGBoost'][m] for m in metrics_compare]
-    rf_vals = [results['test']['Random Forest'][m] for m in metrics_compare]
-
     with col1:
-        fig_radar = go.Figure()
-        fig_radar.add_trace(go.Scatterpolar(
-            r=xgb_vals + [xgb_vals[0]],
-            theta=labels_compare + [labels_compare[0]],
-            fill='toself',
-            fillcolor='rgba(56,139,253,0.15)',
-            line=dict(color=COLORS['XGBoost'], width=2),
-            name='XGBoost 👑'
-        ))
-        fig_radar.add_trace(go.Scatterpolar(
-            r=rf_vals + [rf_vals[0]],
-            theta=labels_compare + [labels_compare[0]],
-            fill='toself',
-            fillcolor='rgba(63,185,80,0.1)',
-            line=dict(color=COLORS['Random Forest'], width=2),
-            name='Random Forest'
-        ))
-        fig_radar.update_layout(
-            **PLOT_CONFIG,
-            polar=dict(
-                bgcolor='#0d1117',
-                radialaxis=dict(visible=True, range=[0, 1], gridcolor=COLORS['grid'],
-                                tickfont=dict(color='#8b949e', size=9)),
-                angularaxis=dict(gridcolor=COLORS['grid'], tickfont=dict(color='#e6edf3'))
-            ),
-            title=dict(text='Test Set Performance Radar', font=dict(color='#e6edf3', size=12)),
-            legend=dict(bgcolor='#161b22', bordercolor='#30363d'),
-            height=380
-        )
-        st.plotly_chart(fig_radar, use_container_width=True)
+        eyebrow("Calibration — mean predicted score vs actual fraud rate (validate)")
+        actual = results['validate']['XGBoost']['Fraud_rate']
+        means = [results['validate'][m]['Mean_score'] for m in models_list]
+        fig = go.Figure(go.Bar(x=models_list, y=[v * 100 for v in means], marker_color=[COLORS[m] for m in models_list],
+                               text=[f"{v:.2%}" for v in means], textposition='outside', textfont=dict(color=INK)))
+        fig.add_hline(y=actual * 100, line_dash='dash', line_color=INK, annotation_position='bottom left',
+                      annotation_text=f'actual fraud rate {actual:.3%}', annotation_font_color=INK)
+        fig.update_layout(**PLOT_CONFIG, height=380, showlegend=False,
+                          xaxis=axis(tickfont=dict(color=INK)),
+                          yaxis=axis(type='log', title='Mean score (%, log scale)', range=[-1.3, 1.4]))
+        chart(fig)
 
     with col2:
-        st.markdown("""
-        <div class='metric-card' style='height:350px;overflow:auto;'>
-            <div class='metric-label'>Selection Criteria</div>
-            <div style='color:#8b949e;font-size:0.83rem;line-height:2;margin-top:0.5rem;'>
+        eyebrow(f"At the shared threshold {THRESHOLD:.4f} — test set")
+        fig2 = make_subplots(rows=2, cols=1, vertical_spacing=0.28,
+                             subplot_titles=['Alert precision', 'Share of all transactions flagged'])
+        for row, key, digits in [(1, 'Precision', 1), (2, 'Flag_rate', 2)]:
+            vals = [at_biz['test'][m][key] * 100 for m in models_list]
+            fig2.add_trace(go.Bar(x=vals, y=models_list, orientation='h', marker_color=[COLORS[m] for m in models_list],
+                                  text=[f"{v:.{digits}f}%" for v in vals], textposition='outside',
+                                  textfont=dict(color=INK), showlegend=False), row=row, col=1)
+            fig2.update_yaxes(autorange='reversed', tickfont=dict(color=INK), row=row, col=1)
+            fig2.update_xaxes(range=[0, max(vals) * 1.3], gridcolor=LINE, row=row, col=1)
+        fig2.update_layout(**PLOT_CONFIG, height=380)
+        fig2.update_annotations(font=dict(color=INK, family='JetBrains Mono, monospace', size=11))
+        chart(fig2)
 
-            <strong style='color:#3fb950;'>✅ XGBoost wins</strong><br>
-            → Perfect precision (1.000) at F1 threshold — zero false positives<br>
-            → Best score calibration: mean score 0.16% ≈ true fraud rate 0.13%<br>
-            → KS threshold (0.0114) closest to true fraud rate<br>
-            → Business cost £2,000 — competitive with RF (£1,960)<br><br>
-
-            <strong style='color:#e3b341;'>⚠️ RF is close</strong><br>
-            → Higher AUPRC on test (0.7748 vs 0.7597)<br>
-            → Slightly better catch rate (75.0% vs 71.2%)<br>
-            → Valid challenger candidate<br><br>
-
-            <strong style='color:#f85149;'>🔴 Critical caveat</strong><br>
-            → No hyperparameter tuning performed<br>
-            → XGBoost most sensitive to tuning<br>
-            → Expected KS: 0.826 → 0.924 with TimeSeriesSplit<br>
-            → Decision: XGBoost as champion, RF as challenger
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.divider()
-
-    # ── feature importance ──
-    st.markdown("<p class='section-eyebrow'>Feature Importance — Consensus Across SHAP · IV · XGBoost Gain</p>", unsafe_allow_html=True)
-
-    features = ['V14', 'V4', 'V12', 'V10', 'V11', 'V17', 'Amount_log', 'V7', 'Hour', 'V3']
-    shap_imp = [0.31, 0.18, 0.15, 0.12, 0.09, 0.07, 0.05, 0.04, 0.03, 0.02]
-    iv_imp =   [0.878, 0.65, 0.55, 0.48, 0.41, 0.38, 0.363, 0.22, 0.18, 0.12]
-    xgb_gain = [0.35, 0.20, 0.13, 0.18, 0.08, 0.06, 0.04, 0.03, 0.02, 0.01]
-
-    iv_norm = [v/max(iv_imp) for v in iv_imp]
-
-    fig_feat = make_subplots(rows=1, cols=3,
-                              subplot_titles=['SHAP Importance', 'Information Value (IV)', 'XGBoost Gain'])
-
-    feat_sorted_shap = sorted(zip(shap_imp, features), reverse=False)
-    feat_sorted_iv = sorted(zip(iv_norm, features), reverse=False)
-    feat_sorted_xgb = sorted(zip(xgb_gain, features), reverse=False)
-
-    for col_idx, (vals, feats, color) in enumerate([
-        ([v for v,f in feat_sorted_shap], [f for v,f in feat_sorted_shap], COLORS['fraud']),
-        ([v for v,f in feat_sorted_iv], [f for v,f in feat_sorted_iv], COLORS['validate']),
-        ([v for v,f in feat_sorted_xgb], [f for v,f in feat_sorted_xgb], COLORS['legit'])
-    ], 1):
-        fig_feat.add_trace(go.Bar(
-            x=vals, y=feats, orientation='h',
-            marker_color=color, showlegend=False
-        ), row=1, col=col_idx)
-
-    fig_feat.update_layout(
-        **PLOT_CONFIG,
-        height=420,
-        title=dict(text='Top 10 Features — V14 dominant across all methods', font=dict(color='#e6edf3', size=13))
-    )
+    eyebrow("Feature importance — three independent views")
+    imp = dash['importance']
+    fig_feat = make_subplots(rows=1, cols=3, subplot_titles=[
+        'Mean |SHAP| on test (log-odds)', 'Information Value (train)', 'XGBoost gain (normalised)'])
+    for col_idx, (key, color) in enumerate([('shap', KEY), ('iv', MUTED), ('gain', SOFT)], 1):
+        fig_feat.add_trace(go.Bar(x=imp[key][::-1], y=imp['features'][::-1], orientation='h',
+                                  marker_color=color, showlegend=False), row=1, col=col_idx)
+    fig_feat.update_layout(**PLOT_CONFIG, height=460)
+    fig_feat.update_annotations(font=dict(color=INK, family='JetBrains Mono, monospace', size=11))
     for i in range(1, 4):
-        fig_feat.update_xaxes(gridcolor=COLORS['grid'], row=1, col=i)
-        fig_feat.update_yaxes(gridcolor=COLORS['grid'], row=1, col=i)
+        fig_feat.update_xaxes(gridcolor=LINE, row=1, col=i)
+        fig_feat.update_yaxes(gridcolor=LINE, tickfont=dict(color=INK), row=1, col=i)
+    chart(fig_feat)
 
-    st.plotly_chart(fig_feat, use_container_width=True)
+    top_psi = max(dash['psi'], key=dash['psi'].get)
+    caption(f"V4, V14, V12 and V10 rank in the top five on all three views. IV is calculated on the training set only. "
+            f"Of the top features, {top_psi} shows the largest train→test shift (PSI {dash['psi'][top_psi]:.2f}).")
 
-    st.markdown("""
-    <div class='alert-warning'>
-    ⚠️ <strong style='color:#e3b341;'>V14 dominance risk</strong> — V14 contributes ~31% of SHAP importance.
-    In production, adversarial fraud patterns could exploit this concentration.
-    Recommendation: monitor V14 PSI weekly. If PSI > 0.25 → retrain immediately.
-    </div>
-    """, unsafe_allow_html=True)
+    n_test = splits['test']['fraud']
+    judgement(
+        f"On {n_test} test frauds, one case moves recall by {100 / n_test:.1f} points, so the KS and AUPRC gaps "
+        f"between the models are small relative to sampling noise. The precision gap at the threshold "
+        f"({pct(xgb_b['Precision'])} vs {pct(rf_b['Precision'])}) is not. That is the difference the decision rests on.",
+        "The fair challenge is that Random Forest's scores could be recalibrated, for example with isotonic regression, "
+        "and might then compete. That was not tested. It is the first experiment I would run on the challenger.",
+        "Hyperparameters were set from domain knowledge, not tuned: standard cross-validation breaks the time "
+        f"ordering, and tuning on a {WINDOW_HOURS}-hour window risks fitting its particular fraud bursts.",
+    )

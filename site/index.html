@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fraud Detection · Live Demo · Korede Folarin</title>
+  <meta name="description" content="A fraud model built to UK bank model-validation practice, with a plain-English reason for every declined payment. Live demo replaying real out-of-time test transactions.">
+  <meta name="theme-color" content="#3b2142">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b2142'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='17' font-weight='800' text-anchor='middle' fill='%23f1eaf2'%3EF%3C/text%3E%3C/svg%3E">
+  <link rel="preload" href="fonts/bricolage-grotesque-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#score">Skip to the demo</a>
+
+  <header class="topbar" id="topbar">
+    <div class="wrap topbar-inner">
+      <a class="wordmark" href="#top">Fraud Detection</a>
+      <nav class="topnav" aria-label="Sections">
+        <a href="#score">Score</a>
+        <a href="#threshold">Threshold &amp; cost</a>
+        <a href="#champion">Champion</a>
+        <a href="#drift">Drift</a>
+      </nav>
+      <div class="toplinks">
+        <a class="pill" href="https://kf-fraud-detection-ml.streamlit.app" target="_blank" rel="noopener">Dashboard ↗</a>
+        <a class="pill" href="https://github.com/korede-folarin/fraud-detection-ml" target="_blank" rel="noopener">GitHub ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero wrap">
+      <p class="kicker">Live demo · real public dataset · nothing calls a model</p>
+      <h1 class="display">
+        <span class="line"><span>Fraud</span></span>
+        <span class="line"><span class="key">Detection.</span></span>
+      </h1>
+      <p class="lede">A fraud model built to UK bank model-validation practice, with a plain-English reason for every declined payment.</p>
+      <p class="lede-2">The score is not the interesting part. The judgement calls are: why the leaderboard winner was not chosen,
+        where the cost-optimal threshold broke on later data, and what the explanations can and cannot tell a customer.</p>
+      <p class="note">Every figure below is read from the pipeline's own output files. For the full interactive version, open the
+        <a href="https://kf-fraud-detection-ml.streamlit.app" target="_blank" rel="noopener">Streamlit dashboard ↗</a>
+        (it can take about 30 seconds to wake).</p>
+
+      <p class="mono-label glance-label">At a glance · out-of-time test set · deployment threshold <span data-bind="threshold"></span></p>
+      <div class="glance">
+        <div class="stat stat-solid">
+          <span class="mono-label">Fraud caught</span>
+          <span class="big"><span data-bind="g-caught"></span><small> of <span data-bind="g-frauds"></span></small></span>
+          <span class="sub" data-bind="g-recall"></span>
+        </div>
+        <div class="stat">
+          <span class="mono-label">Alert precision</span>
+          <span class="big" data-bind="g-precision"></span>
+          <span class="sub">of alerts are real fraud</span>
+        </div>
+        <div class="stat">
+          <span class="mono-label">Alerts per 10,000</span>
+          <span class="big" data-bind="g-alerts"></span>
+          <span class="sub">transactions sent to review</span>
+        </div>
+        <div class="stat">
+          <span class="mono-label">KS / AUPRC</span>
+          <span class="big"><span data-bind="g-ks"></span><small> / <span data-bind="g-auprc"></span></small></span>
+          <span class="sub">ranking quality</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 01 SCORE -->
+    <section class="section wrap reveal" id="score" aria-labelledby="score-title">
+      <p class="kicker">01 · Score a transaction</p>
+      <h2 class="section-title" id="score-title">One payment, one decision, one reason</h2>
+      <p class="section-lede">Each sample is a real transaction from the final, out-of-time test window, which the model never saw in training.
+        Its score and SHAP values were computed once, with the same code the API runs; this page replays them.</p>
+
+      <div class="picker" role="group" aria-label="Choose a sample transaction">
+        <button class="pill tab" data-sample="fraud" aria-pressed="true">Fraud</button>
+        <button class="pill tab" data-sample="legitimate" aria-pressed="false">Legitimate</button>
+        <button class="pill tab" data-sample="borderline" aria-pressed="false">Borderline</button>
+        <button class="pill tab" data-sample="false_alarm" aria-pressed="false">False alarm</button>
+      </div>
+      <p class="picker-help mono-label" id="sample-help"></p>
+
+      <div class="score-grid">
+        <article class="verdict" aria-live="polite">
+          <p class="mono-label on-key" id="v-meta"></p>
+          <div class="stamp-row"><span id="v-stamp" class="stamp"></span><span class="mono-label on-key" id="v-band"></span></div>
+          <p class="mono-label on-key">Fraud probability</p>
+          <p class="prob" id="v-prob"></p>
+          <div class="track" aria-hidden="true">
+            <div class="track-fill" id="v-fill"></div>
+            <div class="track-mark" id="v-mark"><span class="mono-label" id="v-mark-label"></span></div>
+            <div class="track-dot" id="v-dot"></div>
+          </div>
+          <div class="track-scale mono-label on-key" aria-hidden="true"><span>0%</span><span>50%</span><span>100%</span></div>
+          <p class="actual" id="v-actual"></p>
+        </article>
+
+        <article class="why card">
+          <div class="why-head">
+            <h3>Why</h3>
+            <span class="mono-label">SHAP contribution · log-odds</span>
+          </div>
+          <div class="shap" id="shap"></div>
+          <p class="shap-foot mono-label" id="shap-foot"></p>
+          <div class="legend">
+            <span><i class="sw sw-key"></i>Toward fraud — may be cited as a reason</span>
+            <span><i class="sw sw-soft"></i>Away from fraud — never cited</span>
+          </div>
+        </article>
+      </div>
+
+      <div class="notice">
+        <p class="mono-label">What the customer receives</p>
+        <p id="notice-text"></p>
+      </div>
+      <aside class="judgement">
+        <p class="mono-label">Judgement</p>
+        <p>The reasons are faithful to the model, but on this dataset most of them are anonymised components, so the customer
+          learns that a reason exists, not what it is. That is a limit of the data, not the method: with a bank's named features
+          the same code would name them. I chose honest-but-vague over inventing plausible meanings, because a notice that
+          misdescribes the model is worse than one that says little.</p>
+        <p>The false alarm is the case to look at. It is declined with confident-sounding reasons and is wrong. That is why the
+          notice says the decision is automated and offers a manual review: the explanation describes the model, it does not prove it right.</p>
+      </aside>
+      <p class="hint">Want to change the amount or time of day and watch it flip?
+        <a href="https://kf-fraud-detection-ml.streamlit.app" target="_blank" rel="noopener">Open the dashboard ↗</a></p>
+    </section>
+
+    <!-- 02 THRESHOLD -->
+    <section class="section wrap reveal" id="threshold" aria-labelledby="threshold-title">
+      <p class="kicker">02 · Threshold &amp; cost</p>
+      <h2 class="section-title" id="threshold-title">Where to draw the line</h2>
+      <p class="section-lede">A missed fraud and a false alarm do not cost the same, so the threshold is set by expected cost,
+        not F1. It was chosen on the validate set and then frozen before the test set was scored.</p>
+      <p class="formula" id="formula"></p>
+
+      <div class="thr-controls">
+        <div class="picker" role="group" aria-label="Dataset">
+          <button class="pill tab" data-split="validate" aria-pressed="true">Validate</button>
+          <button class="pill tab" data-split="test" aria-pressed="false">Test</button>
+        </div>
+        <p class="mono-label" id="thr-split-info"></p>
+      </div>
+
+      <div class="slider-block">
+        <label class="mono-label" for="thr">Decision threshold — flag when score ≥ <strong id="thr-value"></strong></label>
+        <div class="slider-wrap">
+          <input type="range" id="thr" min="0" step="1">
+          <div class="slider-marks" id="thr-marks" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <div class="readouts">
+        <div class="stat"><span class="mono-label">Fraud caught</span><span class="big" id="r-caught"></span><span class="sub" id="r-caught-sub"></span></div>
+        <div class="stat"><span class="mono-label">False alarms</span><span class="big" id="r-fp"></span><span class="sub" id="r-fp-sub"></span></div>
+        <div class="stat"><span class="mono-label">Total cost</span><span class="big" id="r-cost"></span><span class="sub"><span class="chip-orange" id="r-missed"></span></span></div>
+      </div>
+
+      <figure class="chart card">
+        <figcaption class="mono-label">Total cost vs threshold — champion XGBoost (threshold grid is log-spaced)</figcaption>
+        <div id="cost-chart"></div>
+        <p class="mono-label chart-legend" id="cost-legend"></p>
+      </figure>
+
+      <h3 class="sub-title">The two thresholds, frozen</h3>
+      <div class="table-wrap">
+        <table class="table" id="frozen-table">
+          <thead><tr><th>Threshold</th><th>Set</th><th class="num">Fraud caught</th><th class="num">Precision</th><th class="num">Cost</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <aside class="judgement">
+        <p class="mono-label">Judgement</p>
+        <p>Choosing the threshold on the test set would have produced a better-looking number and a meaningless one, so it was
+          fixed on validate first. The costs <span data-bind="cost-pair"></span> are assumptions, not measured figures, and the
+          optimal threshold depends only on their ratio. A bank would agree that ratio with its fraud-operations and complaints
+          teams before trusting the optimiser.</p>
+      </aside>
+      <div class="card honest">
+        <p class="mono-label">Stated honestly</p>
+        <p id="honest-text"></p>
+      </div>
+    </section>
+
+    <!-- 03 CHAMPION -->
+    <section class="section wrap reveal" id="champion" aria-labelledby="champion-title">
+      <p class="kicker">03 · Champion</p>
+      <h2 class="section-title" id="champion-title">The leaderboard is not the decision</h2>
+      <p class="section-lede">Three models trained under identical out-of-time conditions. On the test set, Random Forest ranks best — the table shows it.</p>
+
+      <div class="table-wrap">
+        <table class="table rank" id="rank-table">
+          <thead>
+            <tr><th rowspan="2">Model</th><th colspan="3" class="num">Validate</th><th colspan="3" class="num">Test</th></tr>
+            <tr><th class="num">KS</th><th class="num">AUPRC</th><th class="num">F1</th><th class="num">KS</th><th class="num">AUPRC</th><th class="num">F1</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="mono-label table-note">Bold = best in column</p>
+
+      <h3 class="turn">Then apply the deployment threshold.</h3>
+      <div class="bars-grid">
+        <div>
+          <p class="mono-label">Alert precision — share of alerts that are fraud</p>
+          <div class="hbars" id="bars-precision"></div>
+        </div>
+        <div>
+          <p class="mono-label">Share of all transactions flagged</p>
+          <div class="hbars" id="bars-flag"></div>
+        </div>
+      </div>
+
+      <ol class="rationale" id="rationale"></ol>
+      <aside class="judgement">
+        <p class="mono-label">Judgement</p>
+        <p>On <span data-bind="test-frauds"></span> test frauds, one case moves recall by <span data-bind="one-case"></span>
+          points, so the KS and AUPRC gaps in the table are small relative to sampling noise. The precision gap at the threshold
+          (<span data-bind="prec-xgb"></span> vs <span data-bind="prec-rf"></span>) is not. That is the difference the decision rests on.</p>
+        <p>The fair challenge is that Random Forest's scores could be recalibrated, for example with isotonic regression, and
+          might then compete. That was not tested. It is the first experiment I would run on the challenger.</p>
+      </aside>
+    </section>
+
+    <!-- 04 DRIFT -->
+    <section class="section wrap reveal" id="drift" aria-labelledby="drift-title">
+      <p class="kicker">04 · Drift &amp; monitoring</p>
+      <h2 class="section-title" id="drift-title">What a monitor should catch</h2>
+      <p class="section-lede">Each split is a later slice of time, so differences between them are real temporal shift.</p>
+
+      <div class="drift-grid">
+        <figure class="card chart">
+          <figcaption class="mono-label">Population Stability Index · train vs test · eight most influential features</figcaption>
+          <div class="psi" id="psi"></div>
+          <p class="psi-legend mono-label">Dashed lines: 0.10 moderate · 0.25 significant shift</p>
+        </figure>
+        <div class="card trigger">
+          <p class="mono-label">Retraining trigger · Airflow drift_check</p>
+          <p class="trigger-rule" id="trigger-rule"></p>
+          <p class="big" id="trigger-now"></p>
+          <p class="sub" id="trigger-sub"></p>
+          <div class="ks-track" aria-hidden="true"><div class="ks-mark" id="ks-mark"></div><div class="ks-dot" id="ks-dot"></div></div>
+          <div class="ks-scale mono-label" id="ks-scale" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <aside class="judgement">
+        <p class="mono-label">Judgement</p>
+        <p>The KS trigger still reads healthy (<span data-bind="ks-now"></span> against <span data-bind="ks-trig"></span>), yet
+          <span data-bind="psi-top"></span> has a PSI of <span data-bind="psi-top-val"></span>: the inputs moved a lot while the
+          ranking held up. Section 02 shows the operating point had already broken. A KS-only trigger would miss both, so a
+          production monitor should also watch PSI and alert precision.</p>
+        <p>The weekly Airflow retraining is demonstrated, not exercised: on a fixed <span data-bind="window-hours"></span>-hour dataset every run sees the same data.</p>
+      </aside>
+      <figure class="card chart">
+        <figcaption class="mono-label">Hourly fraud rate across the <span data-bind="window-hours"></span>-hour window · split periods shaded</figcaption>
+        <div id="hourly-chart"></div>
+      </figure>
+    </section>
+
+    <!-- 05 DARK BLOCK -->
+    <section class="dark reveal" aria-labelledby="explore-title">
+      <div class="wrap">
+        <p class="kicker on-key">05 · The full dashboard</p>
+        <h2 class="section-title on-key" id="explore-title">Explore it yourself</h2>
+        <ul class="explore">
+          <li><strong>Score a Transaction</strong> Edit amount, time of day and the top risk indicators, and watch the decision change.</li>
+          <li><strong>Threshold &amp; Cost</strong> The same cost trade-off, with the full curves.</li>
+          <li><strong>Drift and Champion Rationale</strong> PSI, KS curves, calibration and feature importance.</li>
+        </ul>
+        <div class="cta">
+          <a class="btn-orange" href="https://kf-fraud-detection-ml.streamlit.app" target="_blank" rel="noopener">Open the dashboard →</a>
+          <a class="link-on-key" href="https://github.com/korede-folarin/fraud-detection-ml" target="_blank" rel="noopener">Code on GitHub ↗</a>
+        </div>
+        <p class="mono-label on-key">Real public dataset (anonymised card transactions) · nothing you do calls a paid service.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <p class="scope" id="scope"></p>
+    <nav class="footlinks" aria-label="Elsewhere">
+      <a href="https://github.com/korede-folarin/fraud-detection-ml" target="_blank" rel="noopener">GitHub ↗</a>
+      <a href="https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow" target="_blank" rel="noopener">MLflow on DagsHub ↗</a>
+      <a href="https://koredefolarin.com" target="_blank" rel="noopener">koredefolarin.com ↗</a>
+    </nav>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
