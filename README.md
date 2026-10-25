@@ -1,117 +1,78 @@
-# Fraud Detection Pipeline with Explainable Decisioning
+# Fraud Detection with Explainable Decisions
 
-*A fraud detection pipeline built to UK banking model-validation practice, with a real-time,
-plain-English explanation for every declined transaction.*
+**A fraud model built to UK bank model-validation practice that tells every declined customer why, in plain English.**
 
-![CI](https://github.com/korede-folarin/fraud-detection-ml/actions/workflows/ci.yml/badge.svg)
-![Python](https://img.shields.io/badge/Python-3.11-blue)
-![XGBoost](https://img.shields.io/badge/XGBoost-Champion_Model-orange)
-![BentoML](https://img.shields.io/badge/BentoML-REST_API-green)
-![Docker](https://img.shields.io/badge/Docker-Containerised-blue)
-![Airflow](https://img.shields.io/badge/Apache_Airflow-Orchestration-017CEE)
-![MLflow](https://img.shields.io/badge/MLflow-Experiment_Tracking-0194E2)
-![SHAP](https://img.shields.io/badge/SHAP-Explainability-red)
-![Streamlit](https://img.shields.io/badge/Streamlit-Live_Demo-FF4B4B)
-![DVC](https://img.shields.io/badge/DVC-Data_Versioning-945DD6)
+[![CI](https://github.com/korede-folarin/fraud-detection-ml/actions/workflows/ci.yml/badge.svg)](https://github.com/korede-folarin/fraud-detection-ml/actions/workflows/ci.yml)
+[![Pages](https://github.com/korede-folarin/fraud-detection-ml/actions/workflows/pages.yml/badge.svg)](https://korede-folarin.github.io/fraud-detection-ml/)
+![Python](https://img.shields.io/badge/Python-3.11-3b2142)
+![Model](https://img.shields.io/badge/XGBoost-SHAP-3b2142)
 
-## 🔍 Try it live
+### [▶ Open the live demo](https://korede-folarin.github.io/fraud-detection-ml/) &nbsp;·&nbsp; [Interactive dashboard](https://kf-fraud-detection-ml.streamlit.app) &nbsp;·&nbsp; [MLflow experiments](https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow)
 
-1. **Live demo:** [korede-folarin.github.io/fraud-detection-ml](https://korede-folarin.github.io/fraud-detection-ml/).
-   It loads instantly and is always on. It replays four real out-of-time test transactions (a fraud,
-   a legitimate payment, the nearest approval and a false alarm), each with its decision, SHAP
-   reasons and the exact customer notice. It also has the threshold/cost trade-off, the
-   champion-challenger comparison and drift monitoring. Nothing on it calls a model, and every
-   number is read from the pipeline's output files.
-2. **Interactive dashboard:** [kf-fraud-detection-ml.streamlit.app](https://kf-fraud-detection-ml.streamlit.app)
-   (it can take about 30 seconds to wake). It scores transactions live:
+<a href="https://korede-folarin.github.io/fraud-detection-ml/"><img src="docs/images/demo.gif" alt="Live demo cycling through four real out-of-time transactions: a caught fraud, a legitimate payment, the nearest approval and a false alarm, each with its decision, SHAP reasons and the customer notice" width="100%"></a>
 
-- **Score a real transaction.** Load a fraud, a legitimate payment, a borderline case or a false alarm
-  from the out-of-time test set, and the champion model decides APPROVE or DECLINE.
-- **Change its features** (amount, time of day, the top risk indicators) and watch the decision flip.
-- **See why.** A SHAP waterfall shows what drove *this* decision, plus the exact notice the customer
-  would receive. It runs the same scoring code as the REST API.
-- **Move the decision threshold** and see fraud caught, false alarms and £ cost change on both
-  hold-out sets.
-
-## Links
-
-- **Live demo:** https://korede-folarin.github.io/fraud-detection-ml/
-- **Interactive dashboard:** https://kf-fraud-detection-ml.streamlit.app
-- **GitHub repository:** https://github.com/korede-folarin/fraud-detection-ml
-- **MLflow experiments:** https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow
-
-## Overview
-
-The UK has no equivalent of the US adverse action notice requirement. When an automated system
-declines a transaction here, the customer is rarely told why in any meaningful way. Under the FCA's
-Consumer Duty, firms must support retail customer understanding so that communications "meet the
-information needs of retail customers," "are likely to be understood," and "equip retail customers
-to make decisions that are effective, timely and properly informed."[^1] Most fraud systems deployed
-today do not meet that bar.
-
-This pipeline is built to. Every decline it returns comes with a real-time, plain-English
-explanation generated from SHAP values computed for that specific decision. It is not a static FAQ
-or a generic disclaimer, and it is built into the scoring code rather than bolted on afterward.
-
-Underneath is a fraud model developed the way UK bank model-validation teams expect:
-out-of-time validation, Information Value-driven feature selection, cost-based threshold
-optimisation, and a champion chosen for trustworthy behaviour at its deployment threshold rather
-than the highest leaderboard score. It is orchestrated with Airflow, tracked in MLflow, versioned
-with DVC, served with BentoML and Docker, and monitored in a live Streamlit dashboard.
-
-Full reasoning for every modelling decision is in [Why Each Decision Was Made](#why-each-decision-was-made).
-The explainability design is in [Explainability & FCA Consumer Duty](#explainability--fca-consumer-duty).
-
-### At a glance
-
-Champion XGBoost on the **out-of-time test set** (the last 6 hours of data, never used for training
-or tuning), at the deployment threshold chosen on the validate set:
-
-| | |
-|---|---|
-| Fraud caught | **75.0%** (39 of 52) |
-| Alert precision | **48.1%** (about 1 in 2 alerts is real fraud) |
-| Manual review load | **19 alerts per 10,000 transactions** |
-| KS / AUPRC | **0.805 / 0.760** (AUPRC is 624× the random baseline) |
-| Explanations | Per-transaction SHAP reasons, generated at scoring time |
-| Governance | Three-model champion-challenger comparison with documented rationale |
-| Deployment | BentoML REST API, containerised with Docker; live Streamlit demo |
-| Monitoring | KS retraining trigger (Airflow), PSI drift by feature, threshold cost tracking |
+<sub>Four real transactions from the held-out last six hours of data, each with its decision, the SHAP reasons behind it, and the exact notice the customer receives. Every number is read from the pipeline's output files.</sub>
 
 ---
 
-## Why Each Decision Was Made
+## The 30-second version
 
-### Out-of-time validation (70/15/15)
+**The problem.** When a bank's model blocks a payment, the customer is rarely told why. The FCA's Consumer Duty expects communications customers can actually understand,[^1] and an unexplained decline is also a support call and a possible complaint.
 
-Random train/test splits are the most common source of optimistic bias in fraud ML. When future
-transactions appear in training data, the model learns patterns it could never have seen in
-production. That inflates reported performance and produces models that degrade as soon as they
-are deployed.
+**What I built.** An end-to-end fraud pipeline: ingestion, feature selection, three-model champion-challenger, cost-based threshold, a REST API that returns a **per-transaction reason for every decline**, monitoring, and two live front ends.
 
-I enforced strict temporal ordering:
+**How it performs.** These are results on the **out-of-time test set**: the final six hours of data, never used for training, tuning or picking the threshold.
 
-| Split | Hours of the 48-hour window | Transactions | Fraud | Fraud rate |
-|---|---|---|---|---|
-| Train | 0 – 36.9 | 199,364 | 384 | 0.193% |
-| Validate | 36.9 – 42.0 | 42,721 | 56 | 0.131% |
-| Test | 42.0 – 48 | 42,722 | 52 | 0.122% |
+| Fraud caught | Alert precision | Review load | KS / AUPRC |
+|:---:|:---:|:---:|:---:|
+| **75%** (39 of 52) | **48%** of alerts are real fraud | **19** per 10,000 payments | **0.805 / 0.760** |
 
-This is the out-of-sample discipline that UK bank model-risk frameworks expect (see the PRA's
-SS1/23, *Model risk management principles for banks*). The validate set picks the threshold, and
-the test set is only looked at once.
+**What is worth your time.** Not the score but the judgement calls:
 
-**Impact:** the fraud rate fell from 0.193% in train to 0.122% in test, a genuine distribution
-shift over time that a random split would have hidden.
+1. I picked the model that **lost the leaderboard**, and the [evidence](#3-champion-the-leaderboard-winner-was-not-chosen) shows why.
+2. My cost-optimal threshold **did not hold up on later data**. I [report that](#4-threshold-cost-not-f1-and-what-happened-out-of-time) rather than hide it.
+3. The explanations are **honest about what they cannot tell a customer**: see [what the explanation can and cannot do](#explanations-a-reason-for-every-decline).
 
-### Information Value over Pearson correlation
+---
 
-Correlation measures linear relationships, and fraud is not linear. Relying on correlation alone
-undervalues features with non-monotonic relationships to the target.
+## What I did
 
-I applied optimal binning to the training set only, never touching validate or test, to calculate
-Information Value for every candidate feature. V14 and V12 came out as the dominant predictors. IV
-also exposed a U-shaped fraud profile in transaction amount that correlation misses entirely:
+This is a solo project, and I made every decision below.
+
+- **Designed the validation:** a strict 70/15/15 split by time, so the test set is genuinely the future.
+- **Selected features by Information Value** on the training set only, which exposed a U-shaped fraud pattern in transaction amount that correlation misses.
+- **Trained and governed three models** (Logistic Regression, Random Forest, XGBoost) under identical conditions, and chose the champion by its behaviour at the deployment threshold.
+- **Set the decision threshold by business cost** (£150 per missed fraud, £10 per false alarm) on the validate set, then froze it before scoring the test set.
+- **Built the explanation layer:** SHAP values per transaction, turned into a customer notice. Unit tests enforce that only features pushing *towards* fraud are ever cited.
+- **Shipped it:**
+  - a BentoML REST API in Docker;
+  - an Airflow DAG with a drift check;
+  - MLflow on DagsHub and DVC;
+  - a Streamlit dashboard and a static GitHub Pages demo;
+  - CI that checks the demo's notices match the API's word for word.
+- **Audited my own work.** I recomputed every headline number from the saved models, replaced a hard-coded threshold with one the pipeline derives, and removed every simulated chart.
+
+---
+
+## Five decisions and the evidence behind them
+
+### 1. Validation: split by time, not at random
+
+A random split lets the model train on the future, which inflates every metric. I trained on the earliest 70% of transactions, picked the threshold on the next 15%, and looked at the last 15% exactly once.
+
+| Split | Hours | Transactions | Fraud rate |
+|---|---|---|---|
+| Train | 0 – 36.9 | 199,364 | 0.193% |
+| Validate | 36.9 – 42.0 | 42,721 | 0.131% |
+| Test | 42.0 – 48 | 42,722 | 0.122% |
+
+The fraud rate fell by more than a third between train and test: real drift that a random split would have hidden. This is the out-of-sample discipline UK bank model-risk frameworks expect (PRA SS1/23).
+
+### 2. Features: Information Value, not correlation
+
+<details>
+<summary><b>Correlation misses non-linear fraud patterns. IV, binned on the training set only, found a U-shape in amount.</b></summary>
+<br>
 
 | Amount (training set) | Fraud rate |
 |---|---|
@@ -119,194 +80,137 @@ also exposed a U-shaped fraud profile in transaction amount that correlation mis
 | €1.19 – €237 | 0.11% |
 | above €237 | 0.35% |
 
-High fraud at tiny amounts is consistent with card testing, and at large amounts with account
-takeover.
+High fraud at tiny amounts is consistent with card testing, and at large amounts with account takeover. IV-based selection cut 34 candidate features to 30.
 
-**Impact:** IV-based selection reduced 34 candidate features to 30 with a principled cut-off.
+**Imbalance: `class_weight` over SMOTE.** There are 492 frauds against 284,315 legitimate payments. Synthetic frauds made up by interpolation don't exist in production, so I re-weighted inside each model instead (XGBoost `scale_pos_weight=518`). The payoff came later: XGBoost's mean score on validate (0.16%) sits close to the true fraud rate (0.13%).
 
-### `class_weight` over SMOTE
+**Velocity features: a data limit, measured.** Rolling 100-transaction features scored near-zero IV, because without customer IDs they mix different people's histories. In production these would be per-customer features from a feature store. IV quantified the gap rather than hiding it.
 
-Class imbalance here is extreme: 492 frauds against 284,315 legitimate transactions. SMOTE is the
-instinctive fix, but at this ratio it is counterproductive. Fraud patterns made up by
-interpolation do not exist in production, so a model trained on them learns a distribution it will
-never see.
+</details>
 
-I handled imbalance inside each model instead, keeping the real training distribution:
+### 3. Champion: the leaderboard winner was not chosen
 
-- Logistic Regression → `class_weight='balanced'`
-- Random Forest → `class_weight='balanced'`
-- XGBoost → `scale_pos_weight=518` (the legit:fraud ratio in the training set)
+On the test set, Random Forest beats XGBoost on KS and AUPRC. But those metrics measure *ranking*, and a bank deploys a *threshold*. So I applied the same deployment threshold (0.0716) to all three models:
 
-**Impact:** XGBoost's average predicted score on validate (0.16%) closely matched the true fraud rate
-(0.13%). Its probabilities reflected the real fraud distribution, which becomes decisive when one
-threshold is applied to all three models.
-
-### Champion-challenger model development
-
-Good model governance means benchmarking candidate models under identical conditions and giving a
-defensible reason for the champion, not just deploying the leaderboard winner.
-
-I trained three models under identical out-of-time conditions:
-
-- Logistic Regression, the interpretable baseline
-- Random Forest, the ensemble benchmark
-- XGBoost, the industry-standard fraud approach
-
-Hyperparameters were set from domain knowledge rather than cross-validation tuning. Standard
-cross-validation breaks the time ordering of transaction data, and tuning on a 48-hour window risks
-fitting its particular fraud bursts.
-
-On validate, all three scored similarly (KS > 0.92). On test, Random Forest edged ahead of XGBoost
-on both KS and AUPRC, the two threshold-independent ranking metrics. By leaderboard rules,
-Random Forest wins.
-
-I still chose XGBoost. KS and AUPRC measure *ranking*: do fraud scores tend to be higher than
-legitimate ones? They do not measure whether a score means anything on its own, and a bank deploys
-a threshold, not a ranking.
-
-So I applied XGBoost's deployment threshold (0.0716) to all three models on the test set:
-
-| Model | Alert precision | Share of all transactions flagged | Behaviour |
+| Model | Test KS | Alert precision at threshold | Share of all payments flagged |
 |---|---|---|---|
-| Logistic Regression | 0.4% | 31.5% | Flags almost a third of all payments. Unusable. |
-| Random Forest | 8.1% | 1.3% | About 12 of every 13 alerts are false alarms |
-| **XGBoost** | **48.1%** | **0.19%** | About half of alerts are real fraud |
+| Logistic Regression | 0.857 | 0.4% | **31.5%**, unusable |
+| Random Forest | 0.843 | 8.1% | 1.3%, about 12 in 13 alerts false |
+| **XGBoost (champion)** | 0.805 | **48.1%** | **0.19%** |
 
-Random Forest's ranking advantage disappears once a real threshold is applied. Its scores are not
-calibrated to the true fraud rate (its mean score on validate is 1.5% vs a true rate of 0.13%), so
-a low threshold makes it flag far too much. XGBoost's scores are calibrated, so the same threshold
-stays meaningful.
+Random Forest's scores aren't calibrated: its mean score is 1.5% against a true rate of 0.13%. That makes a low threshold flood the review team.
 
-**Impact:** XGBoost was chosen because it was the only model whose scores could be trusted at the
-threshold a bank would actually deploy. Random Forest remains the registered challenger.
+<details>
+<summary><b>How much weight this evidence can bear</b></summary>
+<br>
 
-**How much weight the evidence can bear.** With 52 test frauds, one case moves recall by 1.9 points.
-The KS and AUPRC gaps between the models are small next to that noise; the precision gap at the
-threshold (48.1% vs 8.1%) is not, and it is what the decision rests on. The fair challenge to this
-choice is that Random Forest's scores could be recalibrated (for example with isotonic regression)
-and might then compete. That was not tested, and it is the first experiment I would run on the
-challenger.
+With 52 test frauds, one case moves recall by 1.9 points. The KS and AUPRC gaps between models are small next to that noise; the precision gap at the threshold is not, and that is what the decision rests on.
 
-### Business cost threshold over F1 optimisation
+**The fair challenge:** Random Forest's scores could be recalibrated (for example with isotonic regression) and might then compete. I haven't tested that. It is the first experiment I would run on the challenger, which stays registered.
 
-F1 treats false positives and false negatives as equally costly. In fraud detection they are not:
-missing a £150 fraud costs 15× more than a £10 false-alarm review.
+Hyperparameters were set from domain knowledge rather than tuned. Standard cross-validation breaks time ordering, and tuning on a 48-hour window risks fitting its particular fraud bursts.
 
-Rather than pick a threshold by hand, I computed the exact expected cost at every possible threshold
-on the **validate set**:
+</details>
 
-```
-cost = (missed fraud × £150) + (false alarms × £10)
-```
+### 4. Threshold: cost, not F1, and what happened out of time
 
-and froze the minimum-cost threshold (0.0716) before looking at test.
+F1 treats a missed fraud and a false alarm as equally bad. Instead I minimised `cost = missed fraud × £150 + false alarms × £10` over every threshold on the validate set, then froze the result.
 
 | Threshold (chosen on validate) | Validate: caught / precision / cost | Test: caught / precision / cost |
 |---|---|---|
 | Cost-optimal, 0.0716 | 91.1% / 52.6% / **£1,210** | 75.0% / 48.1% / £2,370 |
 | F1-optimal, 0.9311 | 78.6% / 97.8% / £1,810 | 73.1% / 88.4% / **£2,150** |
 
-**Impact, stated honestly:** on validate, the cost-optimal threshold caught 12.5 points more fraud
-and cut cost by a third. On the later test window it did not hold up: it caught one more fraud than
-the F1 threshold for 37 more false alarms, and cost £220 more. With only 56 validate frauds, the
-cost-optimal point is unstable over time.
+**Stated honestly:** on validate, the cost-optimal threshold caught 12.5 points more fraud and cut cost by a third. **On the later test window it did not hold up.** It caught one more fraud for 37 more false alarms, and cost £220 more. With only 56 validate frauds, the optimum is unstable over time. That is the case for recalibrating on a rolling window and monitoring alert precision, not just KS.
 
-That is the case for what a production version would add: recalibrate the threshold on a rolling
-window, and monitor alert precision alongside KS. You can explore this trade-off with the threshold
-slider in the live dashboard.
+<details>
+<summary><b>See it on the live demo, and what the £ figures really are</b></summary>
+<br>
 
-### Velocity features: production design considerations
+<img src="docs/images/site-threshold.png" alt="Threshold and cost section of the live demo: slider over thresholds, fraud caught, false alarms and total cost, cost curve with the cost-optimal and F1-optimal thresholds marked" width="100%">
 
-Rolling transaction features were engineered over a 100-transaction window: average amount,
-volatility, fraud density and transaction count. Their Information Value was calculated, and only
-rolling volatility survived feature selection.
+The £150 and £10 are assumptions, not measured costs, and the optimal threshold depends only on their ratio. In a bank that ratio would be agreed with fraud operations and complaints teams before the optimiser's output is trusted.
 
-This is a data limitation, not a method failure. Without customer identifiers, rolling statistics
-mix different customers' histories. They are mathematically valid but behaviourally meaningless.
-In production, velocity features are computed per customer through a feature store (Redis/Feast)
-over 1h/24h/7d windows, and they typically rank among the strongest predictors. The dataset's
-anonymisation removes the customer dimension they need.
+</details>
 
-**Impact:** IV quantified the limitation rather than hiding it, and points to per-customer velocity
-features as the clearest improvement with real customer-level data.
+### 5. Monitoring: KS alone would have missed it
+
+The Airflow `drift_check` task flags retraining when test KS falls below 0.75; it's currently 0.805, so it reads healthy. But the Population Stability Index for V1 is 1.01, a large input shift, and section 4 shows the operating point had already broken. A production monitor should watch **PSI and alert precision alongside KS**. The dashboard tracks all three.
 
 ---
 
-## Explainability & FCA Consumer Duty
+## Explanations: a reason for every decline
 
-The UK does not currently have a direct equivalent of the US adverse action notice requirement
-(ECOA / Regulation B), which obliges lenders to give consumers specific reasons when a credit
-decision goes against them. The UK's Data (Use and Access) Act 2025 narrowed Article 22 UK GDPR's
-protections around solely automated decision-making. Since then, legal commentators have argued
-the UK should adopt a comparable framework, because consumers here have materially weaker rights to
-an explanation than in the US. (See: Oxford Business Law Blog, "Reasons for Automated Decisions";
-FCA Consumer Duty, fca.org.uk/firms/consumer-duty.)
+Every decline returned by the API (and both demos) includes:
+- the fraud probability and risk band;
+- the top SHAP contributions for *that* transaction;
+- a plain-English notice naming the main factors;
+- a statement that the decision was automated and can be reviewed.
 
-The FCA's Consumer Duty, in force since 2023, requires that consumers receive communications they
-can understand, and the consumer understanding outcome remains a supervisory focus.[^2][^3] A model
-that declines a transaction with no explanation does not meet that bar, even where no explicit legal
-requirement yet forces the point.
+Two rules are enforced by tests in [`tests/test_inference.py`](tests/test_inference.py):
 
-I built this pipeline to anticipate that direction rather than wait for it. Every decline returned
-by the API, and by the live demo, includes:
+1. **Only positive SHAP contributions are cited.** A feature that pushed a payment *away* from fraud is never given as a reason for blocking it.
+2. **Honest naming.** V1–V28 are anonymised PCA components with no known meaning, so the notice calls them "behavioural risk indicators" instead of inventing a story. Only the engineered features (amount, time of day, spending volatility) are named concretely.
 
-- The fraud probability and risk band.
-- The top contributing features, ranked by SHAP values computed for *that* transaction. This is not
-  global feature importance and not raw feature size. An earlier version ranked by raw value, which
-  surfaced large but irrelevant numbers ahead of the features that actually drove the decision;
-  that was fixed.
-- A plain-English notice naming the main contributing factors.
-- An explicit statement that the decision was automated and can be reviewed.
+**What the explanation can and cannot do.** On this dataset a customer learns *that* a reason exists, not *what* it is. That is a limit of the data, not the method: with a bank's named features, the same code names them. An explanation also describes the model; it does not prove it right. A false alarm gets reasons that sound just as confident, which is why every notice offers a manual review.
 
-What the explanation can and cannot do: on this dataset most reasons are anonymised PCA
-components, so a customer learns that a reason exists, not what it is. That is a limit of the data,
-not of the method; with a bank's named features the same code would name them. And an explanation
-describes the model, it does not prove it right. A false alarm gets reasons that sound just as
-confident as a caught fraud, which is why every notice offers a manual review.
+<details>
+<summary><b>Regulatory and commercial context</b></summary>
+<br>
 
-Two design constraints, both enforced by unit tests in [`tests/test_inference.py`](tests/test_inference.py):
+The UK has no direct equivalent of the US adverse action notice (ECOA / Regulation B). The Data (Use and Access) Act 2025 narrowed Article 22 UK GDPR protections around solely automated decisions. The FCA's Consumer Duty requires communications customers can understand, and consumer understanding remains a supervisory focus.[^2][^3]
 
-1. **Only positive SHAP contributions are cited as reasons for a decline.** A feature that pushed a
-   transaction *away* from fraud must never appear as a reason it was blocked; that would
-   misrepresent the model's own reasoning.
-2. **Honest feature naming.** V1–V28 are PCA components from the original anonymised bank data, and
-   their real-world meaning is unknown. The notice calls them "behavioural risk indicators" rather
-   than inventing a plausible-sounding meaning. Only the features I engineered (transaction amount,
-   time of day, recent spending volatility) are described in concrete terms.
+This project does not claim UK regulation requires per-decision explanations today. It shows what a system designed ahead of that direction looks like.
 
-SHAP values are computed with XGBoost's native TreeSHAP (`pred_contribs`). This is exact, matches
-`shap.TreeExplainer` to floating-point precision, and adds no extra dependency at serving time.
+Commercially, an unexplained decline generates contact-centre calls, and some escalate to the Financial Ombudsman Service, where firms pay a case fee regardless of outcome. A contemporaneous, per-transaction reason gives compliance an auditable record and gives customers less reason to escalate.
 
-This is not a claim that UK regulation currently requires this. It shows what a fraud system
-designed ahead of that direction looks like.
+SHAP values come from XGBoost's native TreeSHAP (`pred_contribs`). It is exact, matches `shap.TreeExplainer` to floating-point precision, and needs no extra serving dependency.
 
-### Why this matters commercially, not just academically
-
-An unexplained decline is not a neutral outcome for a bank. It generates a support call, and at
-scale some of those escalate to the Financial Ombudsman Service. Firms pay a case fee there
-regardless of outcome, and absorb the compensation, reputational and operational cost of upheld
-complaints.
-
-An accurate, per-transaction explanation helps on two fronts:
-
-- **Regulatory exposure.** It gives a defensible, contemporaneous record of why a specific
-  transaction was declined. It is created at the moment of decision, not reconstructed after a
-  complaint, which is the difference between "the model said no" and an auditable rationale a
-  compliance team can stand behind.
-- **Operational cost.** A customer given a specific, accurate reason is less likely to call the
-  contact centre or escalate than one given a generic decline. At fraud-detection volumes, even a
-  small reduction in unnecessary escalations is a material saving.
-
-Neither requires the UK to pass an adverse-action-notice law first.
+</details>
 
 ---
 
-## Results
+## Two ways to explore it
 
-All figures come from [`artifacts/model_evaluation/evaluation_results.json`](artifacts/model_evaluation/evaluation_results.json),
-written by the pipeline's evaluation stage. The dashboard reads the same file.
+| | |
+|---|---|
+| **[Live demo](https://korede-folarin.github.io/fraud-detection-ml/)** (GitHub Pages) | Always on, loads instantly. Replays four real test transactions and the threshold, champion and drift analysis. Nothing calls a model; a test checks its notices match the API word for word. |
+| **[Interactive dashboard](https://kf-fraud-detection-ml.streamlit.app)** (Streamlit) | Scores transactions live. Edit amount, time of day and the top risk indicators and watch the decision flip, with a full SHAP waterfall. May take about 30 seconds to wake. |
 
-**Validate set** (ranking metrics; F1 at each model's own best threshold)
+<img src="docs/images/dashboard-score.png" alt="Streamlit dashboard, Score a Transaction page: verdict card with DECLINE stamp and 99.99% fraud probability, the customer notice, and editable feature sliders" width="100%">
+
+---
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[creditcard.csv<br/>DVC] --> B[Ingest]
+    B --> C[Features<br/>IV selection]
+    C --> D[Train<br/>LR · RF · XGBoost]
+    D --> E[Evaluate<br/>threshold on validate]
+    E --> F[(MLflow<br/>DagsHub)]
+    E --> G[Dashboard data<br/>+ demo assets]
+    E --> H[BentoML API<br/>Docker]
+    G --> I[Streamlit dashboard]
+    G --> J[GitHub Pages demo]
+    K[Airflow DAG<br/>weekly + drift check] -.orchestrates.-> B
+    L[inference.py<br/>score + SHAP + notice] --- H
+    L --- I
+    L --- J
+```
+
+One scoring module, [`inference.py`](src/frauddetection/inference.py), is shared by the API, the dashboard and the demo-site build, so the three can't disagree.
+
+**Stack:** Python · XGBoost · scikit-learn · SHAP · BentoML · Docker · Apache Airflow · MLflow (DagsHub) · DVC · Streamlit · GitHub Actions / Pages
+
+<details>
+<summary><b>Full results tables</b></summary>
+<br>
+
+All figures come from [`artifacts/model_evaluation/evaluation_results.json`](artifacts/model_evaluation/evaluation_results.json), written by the pipeline's evaluation stage.
+
+**Validate set:** ranking metrics, with F1 at each model's own best threshold.
 
 | Model | KS | AUPRC | F1 |
 |---|---|---|---|
@@ -322,108 +226,68 @@ written by the pipeline's evaluation stage. The dashboard reads the same file.
 | Random Forest | 0.843 | 0.775 | 0.848 | 0.081 |
 | Logistic Regression | 0.857 | 0.697 | 0.787 | 0.004 |
 
-Random Forest scores higher on test KS, AUPRC and F1, and XGBoost was still chosen as champion; see
-[Champion-challenger model development](#champion-challenger-model-development). Calibration and
-behaviour at the deployment threshold mattered more than ranking metrics alone.
+**Drift:** PSI from train to test is 1.01 for V1, 0.34 for V11 and 0.08 for V14. Fraud comes in bursts in low-volume hours; hour 26 is 54% higher than the same clock hour on day one.
 
-## Monitoring & drift
-
-- **Retraining trigger:** the Airflow `drift_check` task reads the evaluation results after each run
-  and flags retraining when test KS falls below 0.75 (currently 0.805).
-- **Feature drift:** the dashboard reports the Population Stability Index (train vs test) for the
-  eight most influential features. V1 shows a significant shift (PSI 1.01) and V11 a moderate-to-
-  significant one (0.34). V14, the top feature by IV and gain, is stable (0.08).
-- **What the signals disagree on:** KS still reads healthy while V1's PSI is above 1, and the
-  threshold section shows the operating point has already broken. A KS-only trigger would miss
-  both, so a production monitor should watch PSI and alert precision as well.
-- **Fraud bursts:** fraud is concentrated in short bursts in low-volume hours. Hour 26 (2.05% fraud)
-  is 54% higher than the same clock hour on day one (hour 2, 1.33%).
+</details>
 
 ---
 
-## Live components
+## What I'd do next
 
-- **Static demo site (GitHub Pages):** [korede-folarin.github.io/fraud-detection-ml](https://korede-folarin.github.io/fraud-detection-ml/).
-  It is plain HTML/CSS/JS with self-hosted fonts and makes no outside requests. Its data is written by
-  `python -m src.site.build`, which scores the four samples with the same `inference.py` code as the
-  API. A test checks that the site's notices match the API word for word.
-- **Streamlit dashboard + demo:** [kf-fraud-detection-ml.streamlit.app](https://kf-fraud-detection-ml.streamlit.app).
-  It has an interactive scoring page plus model performance, threshold/cost, drift and champion
-  rationale pages. Every chart is drawn from pipeline outputs; nothing is simulated.
-- **REST API (BentoML):** real-time scoring with SHAP explanations and decline notices,
-  containerised with Docker. It runs locally (instructions below) and is not publicly hosted.
+These are the honest limits of this version, in the order I'd tackle them.
 
-## Production stack
+1. **More time.** 48 hours and 52 test frauds give every test metric wide uncertainty. A real validation would use 12–24 months.
+2. **Recalibrate Random Forest** and re-run the champion-challenger comparison.
+3. **Rolling threshold recalibration**, with alert precision monitored next to KS and PSI.
+4. **Time-series-aware hyperparameter tuning.**
+5. **Per-customer velocity features** from a feature store, once customer IDs exist.
 
-Apache Airflow (scheduled retraining) · MLflow / DagsHub (experiment tracking) · DVC (data
-versioning) · BentoML (model serving) · SHAP (explainability) · Docker (containerisation) ·
-Streamlit (interactive dashboard) · GitHub Pages (static demo) · GitHub Actions (tests, deploy)
-
-## Project structure
-
-```
-src/frauddetection/
-  components/          # ingestion, transformation, training, evaluation, dashboard export
-  pipeline/            # stage runners used by main.py and the Airflow DAG
-  inference.py         # scoring + SHAP explanation, shared by the API and the dashboard
-dags/                  # Airflow DAG: ingest → transform → train → evaluate → drift check
-bento_service/         # BentoML service and model registration
-dashboard/             # Streamlit app + assets (champion model as XGBoost JSON, demo sample)
-site/                  # static GitHub Pages demo (data/ is generated by src/site/build.py)
-src/site/build.py      # builds site/data/*.json from the pipeline outputs
-artifacts/             # pipeline outputs (evaluation results, dashboard data, IV rankings)
-notebooks/             # EDA, feature engineering, modelling and evaluation research
-tests/                 # decision/explanation rules; site data matches the API
-```
+Scheduled retraining is demonstrated but not exercised: the weekly DAG runs, yet on a static dataset every run sees the same data.
 
 ---
 
-## Setup
+## Run it yourself
 
 ```bash
 git clone https://github.com/korede-folarin/fraud-detection-ml
 cd fraud-detection-ml
 python -m venv venv
-venv\Scripts\activate          # macOS/Linux: source venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
+venv\Scripts\activate             # macOS/Linux: source venv/bin/activate
+pip install -r requirements.txt && pip install -e .
 ```
 
-Place `creditcard.csv` in `data/` (or `dvc pull`), then run the full pipeline:
-
-```bash
-python main.py
-```
-
-The evaluation stage logs to MLflow on DagsHub when `DAGSHUB_TOKEN` is set, and skips remote
-logging otherwise. It also writes the dashboard data and the demo assets.
-
-### Running the dashboard
+**Dashboard only**, using the committed model and data, at http://localhost:8501:
 
 ```bash
 pip install -r dashboard/requirements.txt
 streamlit run dashboard/app.py
 ```
 
-### Rebuilding the demo site
+**Demo site**, at http://localhost:8600:
 
 ```bash
-python -m src.site.build
 python -m http.server 8600 --directory site
 ```
 
-Pushing changes under `site/` to `main` deploys it via `.github/workflows/pages.yml`.
+<details>
+<summary><b>Full pipeline, API, Docker and tests</b></summary>
+<br>
 
-### Running the API
+Place `creditcard.csv` in `data/` (or `dvc pull`), then run the pipeline. MLflow logging to DagsHub happens only when `DAGSHUB_TOKEN` is set.
 
-From the repository root:
+```bash
+python main.py
+python -m src.site.build          # refresh the demo site's data
+```
+
+Run the REST API, from the repository root (docs at http://localhost:3000):
 
 ```bash
 python bento_service/save_model.py
-bentoml serve bento_service.service:FraudDetectionService --reload
+bentoml serve bento_service.service:FraudDetectionService
 ```
 
-Or via Docker:
+Run it in Docker:
 
 ```bash
 bentoml build -f bento_service/bentofile.yaml .
@@ -431,49 +295,35 @@ bentoml containerize fraud_detection:latest
 docker run --rm -p 3000:3000 fraud_detection:latest
 ```
 
-API docs are at http://localhost:3000 once running.
-
-### Running the tests
+Run the tests:
 
 ```bash
 pytest tests
 ```
 
-## Dataset
+**Repository layout**
 
-Credit Card Fraud Detection, ULB Machine Learning Group:
-[kaggle.com/datasets/mlg-ulb/creditcardfraud](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud).
-It contains two days of European cardholder transactions from September 2013. Amounts are in euros;
-the £ cost assumptions above are illustrative business inputs.
+```
+src/frauddetection/   pipeline components, stage runners, inference.py (shared scoring)
+dags/                 Airflow DAG: ingest → transform → train → evaluate → drift check
+bento_service/        BentoML service and model registration
+dashboard/            Streamlit app, committed model (XGBoost JSON) and demo sample
+site/                 static GitHub Pages demo; data/ built by src/site/build.py
+artifacts/            evaluation results, dashboard data, IV rankings
+notebooks/            EDA, feature engineering, modelling and evaluation research
+tests/                decision rules, SHAP additivity, site matches API
+```
 
-## Limitations
+</details>
 
-- **48 hours of data.** Out-of-time results rest on 52 test frauds, so every test metric has wide
-  uncertainty. A production model would be validated on 12–24 months.
-- **No hyperparameter tuning**, by design (see above); time-series-aware tuning is the next step.
-- **Cost inputs are assumptions.** £150 and £10 are illustrative, and the optimal threshold depends
-  only on their ratio. In a bank that ratio would be agreed with fraud operations and complaints
-  teams before the optimiser's output is trusted.
-- **Threshold stability.** The cost-optimal threshold did not generalise to the test window; it
-  needs rolling recalibration.
-- **Scheduled retraining is demonstrated, not exercised.** The Airflow DAG retrains weekly, but on
-  this static dataset each run sees the same data.
+**Dataset:** [ULB Credit Card Fraud](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud). It covers two days of European card transactions from September 2013, with amounts in euros. The £ costs are illustrative business inputs.
 
 ---
 
-*Korede Folarin*
+**Korede Folarin.** I build ML systems that hold up in regulated settings. See more at [koredefolarin.com](https://koredefolarin.com) or on [GitHub](https://github.com/korede-folarin).
 
-[^1]: FCA, Consumer Duty: navigating the Consumer Understanding Outcome. The Outcome requires firms
-    to ensure communications "meet the information needs of retail customers," "are likely to be
-    understood by retail customers," and "equip retail customers to make decisions that are
-    effective, timely and properly informed" (PRIN 2A.5).
-    https://www.hoganlovells.com/en/publications/consumer-duty-navigating-the-consumer-understanding-outcome
+[^1]: FCA Consumer Duty, consumer understanding outcome (PRIN 2A.5): communications should "meet the information needs of retail customers," "are likely to be understood," and "equip retail customers to make decisions that are effective, timely and properly informed." Summary: https://www.hoganlovells.com/en/publications/consumer-duty-navigating-the-consumer-understanding-outcome
 
-[^2]: FCA, Our Consumer Duty focus areas. Confirms the Consumer Duty remains a 2025/26 supervisory
-    priority, with a dedicated review of the consumer understanding outcome.
-    https://www.fca.org.uk/publications/corporate-documents/consumer-duty-focus-areas
+[^2]: FCA, Our Consumer Duty focus areas: https://www.fca.org.uk/publications/corporate-documents/consumer-duty-focus-areas
 
-[^3]: FCA, Consumer understanding: good practice and areas for improvement (March 2026). Review of
-    38 firms across banking, payments and consumer finance on how communications support customer
-    understanding under the Duty.
-    https://www.fca.org.uk/publications/good-and-poor-practice/consumer-understanding-good-practice-areas-improvement
+[^3]: FCA, Consumer understanding: good practice and areas for improvement (March 2026): https://www.fca.org.uk/publications/good-and-poor-practice/consumer-understanding-good-practice-areas-improvement

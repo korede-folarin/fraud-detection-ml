@@ -188,6 +188,7 @@ input[type=range]::-moz-range-thumb{width:var(--thumb);height:var(--thumb);borde
 
 /* ── 03 champion ──────────────────────────── */
 .rank thead tr:first-child th{border-bottom:1px solid var(--line)}
+.rank thead tr:first-child th.num{text-align:center}
 .bars-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 40px}
 .hbars{display:flex;flex-direction:column;gap:12px;margin-top:12px}
 .hbar{display:grid;grid-template-columns:150px 1fr 64px;gap:12px;align-items:center;font-size:15px}
