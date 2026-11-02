@@ -1,0 +1,13 @@
+# Prometheus scrape config for the v2 fraud API (D13)
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: fraud-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:3000"]
+        labels:
+          service: fraud_detection_v2
+          baseline: v1.0-evaluated

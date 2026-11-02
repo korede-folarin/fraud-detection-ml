@@ -1,0 +1,92 @@
+{
+  "generated_at": "2026-11-02T04:34:46+00:00",
+  "region": "eu-west-2",
+  "source": "AWS Price List API (public offer files), on-demand USD, before tax and free tier",
+  "unit_prices": {
+    "fargate_vcpu_hour": {
+      "usd": 0.04656,
+      "unit": "hours",
+      "aws_description": "AWS Fargate - vCPU  - EU (London)"
+    },
+    "fargate_gb_hour": {
+      "usd": 0.00511,
+      "unit": "hours",
+      "aws_description": "AWS Fargate - Memory  - EU (London)"
+    },
+    "public_ipv4_hour": {
+      "usd": 0.005,
+      "unit": "Hrs",
+      "aws_description": "$0.005 per In-use public IPv4 address per hour"
+    },
+    "ecr_gb_month": {
+      "usd": 0.1,
+      "unit": "GB-Mo",
+      "aws_description": "$0.10 per GB-month of data storage"
+    },
+    "s3_gb_month": {
+      "usd": 0.024,
+      "unit": "GB-Mo",
+      "aws_description": "$0.024 per GB - first 50 TB / month of storage used"
+    },
+    "logs_ingest_gb": {
+      "usd": 0.5985,
+      "unit": "GB",
+      "aws_description": "$0.5985 per GB custom log data ingested in Standard log class - EU (London)"
+    },
+    "logs_store_gb_month": {
+      "usd": 0.0315,
+      "unit": "GB-Mo",
+      "aws_description": "$0.0315 per GB-mo of log storage -  EU (London)"
+    },
+    "alb_hour": {
+      "usd": 0.02646,
+      "unit": "Hrs",
+      "aws_description": "$0.02646 per Application LoadBalancer-hour (or partial hour)"
+    },
+    "alb_lcu_hour": {
+      "usd": 0.0084,
+      "unit": "LCU-Hrs",
+      "aws_description": "$0.0084 per used Application load balancer capacity unit-hour (or partial hour)"
+    }
+  },
+  "monthly_usd": [
+    {
+      "component": "ECS Fargate task (0.5 vCPU, 1 GB, 730 h)",
+      "usd": 20.72,
+      "status": "in design"
+    },
+    {
+      "component": "Public IPv4 address for the task (730 h)",
+      "usd": 3.65,
+      "status": "in design"
+    },
+    {
+      "component": "ECR image storage (3 GB)",
+      "usd": 0.3,
+      "status": "in design"
+    },
+    {
+      "component": "S3 model artifacts (0.1 GB)",
+      "usd": 0.0,
+      "status": "in design"
+    },
+    {
+      "component": "CloudWatch Logs (1 GB ingested, 7-day retention)",
+      "usd": 0.61,
+      "status": "in design"
+    },
+    {
+      "component": "VPC, subnets, IGW, IAM, OIDC provider, ECS cluster",
+      "usd": 0.0,
+      "status": "in design (no charge)"
+    },
+    {
+      "component": "Application Load Balancer (730 h + 1 LCU)",
+      "usd": 25.45,
+      "status": "NOT in design (production add-on)"
+    }
+  ],
+  "total_in_design_usd_per_month": 25.28,
+  "not_priced": "NAT gateway (deliberately avoided; would be the largest add-on), data transfer out, Terraform state bucket",
+  "deployed": false
+}

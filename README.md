@@ -232,6 +232,23 @@ All figures come from [`artifacts/model_evaluation/evaluation_results.json`](art
 
 ---
 
+## v2: production engineering, at zero cloud cost
+
+v1 is frozen at tag `v1.0-evaluated`. A CI regression check recomputes all 181 v1 results from a committed, hash-checked bundle on every push, so v2 cannot change v1 by accident. Every v2 decision, including the failures, is in [`docs/decisions.md`](docs/decisions.md) (D8–D16). The step-by-step record is in [`CHANGELOG.md`](CHANGELOG.md).
+
+| Component | Status | Real result |
+|---|---|---|
+| **CI**: lint (new code), tests, v1 regression, API Docker build + smoke test, Terraform plan | tested locally; first GitHub run on next push | 29 tests; coverage 25% (stated, not padded); v1 reproduced exactly on Windows and Linux |
+| **Promotion gate** (none existed in v1) | tested locally | both v1 challengers lost: Random Forest had better precision (0.590 vs 0.526) but cost more (£1,390 vs £1,210). Logged to MLflow either way. |
+| **Service monitoring**: Prometheus metrics + Grafana in Docker Compose | tested locally | p95 38 ms at 50 req/s; one worker saturates at about 80 req/s; 0 server errors; bad input now returns 400 (v1 returned 500) |
+| **Streaming**: Kafka → PyFlink, with late and duplicate events, checkpoints, batched scoring | tested locally | 992 events/s at a 1,000/s target (p95 829 ms); about 2,500/s at 3× overload; **exact parity with v1 batch** in every run (0 decision flips), including after a forced restart |
+| **AWS**: Terraform for ECR, ECS Fargate, S3, IAM with GitHub OIDC | **designed only, NOT deployed** | validate + offline plan pass (25 resources); about $25/month if deployed ([costs](v2/infra/README.md)) |
+| Helm on kind | not done | skipped; it doesn't fit this machine's memory alongside the rest (D16) |
+
+<img src="docs/images/grafana-service-health.png" alt="Grafana service-health dashboard for the v2 fraud API: request rate, latency quantiles, error rate, live decline rate against the v1 reference, score distribution, decisions by risk band, model + SHAP time and rejected requests" width="100%">
+
+---
+
 ## What I'd do next
 
 These are the honest limits of this version, in the order I'd tackle them.
@@ -242,7 +259,7 @@ These are the honest limits of this version, in the order I'd tackle them.
 4. **Time-series-aware hyperparameter tuning.**
 5. **Per-customer velocity features** from a feature store, once customer IDs exist.
 
-Scheduled retraining is demonstrated but not exercised: the weekly DAG runs, yet on a static dataset every run sees the same data.
+**Correction (v2, D10):** an earlier version of this README said scheduled retraining was "demonstrated, not exercised". In fact, the weekly DAG ran 48 times between June and November 2026. It ran inside an image with older library versions, so it produced a different model (test KS 0.836, not v1's 0.805), logged into the v1 experiment, with no promotion gate. It is now paused. Retraining resumes only behind the D11 gate, with the v1 library versions.
 
 ---
 

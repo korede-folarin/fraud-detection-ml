@@ -1,0 +1,21 @@
+{
+  "run_at": "2026-11-02T03:25:15+00:00",
+  "target_rps": 20.0,
+  "requests": 600,
+  "wall_seconds": 29.98,
+  "achieved_rps": 20.0,
+  "latency_ms_client": {
+    "p50": 29.32,
+    "p95": 35.69,
+    "p99": 41.46,
+    "mean": 24.77
+  },
+  "status_counts": {
+    "200": 594,
+    "400": 6
+  },
+  "decisions": {
+    "APPROVE": 594
+  },
+  "data": "v1_frozen/data/test.parquet (out-of-time test set, time order)"
+}

@@ -1,0 +1,40 @@
+{
+  "version": "v1",
+  "git_tag": "v1.0-evaluated",
+  "git_commit": "a152eb9a3757b37e9eda86809e345c8a2bddbb7a",
+  "dataset_version": "ulb-creditcard@md5:e90efcb83d69faf99fcab8b0255024de",
+  "evaluation_results": {
+    "path": "artifacts/model_evaluation/evaluation_results.json",
+    "sha256": "e61272f07b3a9cc279786c5de53bcc1dd97f6a093a62ac67fdcc01957727f5b7"
+  },
+  "mlflow": {
+    "tracking_uri": "https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow",
+    "experiment_id": "0",
+    "runs": {
+      "Logistic Regression_validate": "d2a07d44e93d49659e27c17f7fa29e99",
+      "Logistic Regression_test": "c7fd10a21cd7430db5b2ac510db741de",
+      "Random Forest_validate": "836b673e7c174a16af47f7400814c7fa",
+      "Random Forest_test": "f15dd076cc3c4d138ef4e19c2f029bd1",
+      "XGBoost_validate": "3a7dd45ce810448ab16353124bc73240",
+      "XGBoost_test": "f121c779f84c40a6bdc2a361fe7ca739"
+    }
+  },
+  "environment": {
+    "python": "3.14.3",
+    "numpy": "2.4.4",
+    "pandas": "2.3.3",
+    "scikit-learn": "1.8.0",
+    "scipy": "1.17.1",
+    "xgboost": "3.2.0",
+    "joblib": "1.5.3",
+    "pyarrow": "23.0.1"
+  },
+  "files": {
+    "data/test.parquet": "f0cd1e3b4e02ec036bdf04b8a70231175a69df61bd1cf53c40607d1c20e84fe2",
+    "data/validate.parquet": "e0d0a962baae1a67b8e81209228002f5b3dd28ddd803135b0cde2dcfe98ea786",
+    "models/logistic_regression.pkl": "213c40b6e5d6ff748cc3bb22a92d209569a8dd89326a90da67e86e4589a197be",
+    "models/random_forest.pkl": "a2aba4f36c02cd6715cd2a2ded62cf6e64bad37a5f276624673f37a288a05275",
+    "models/scaler.pkl": "48753d71575bafb5c595073b1e608c9b6663c6829559e04bdc44ade304144a2b",
+    "models/xgboost.pkl": "66a235bcb9ce6dd765184fb2dabf8f9da4f68447e653ba3a80a025aeb469bcd2"
+  }
+}

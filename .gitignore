@@ -5,6 +5,9 @@
 # portable XGBoost JSON in dashboard/assets/
 models/
 *.pkl
+# v1 frozen bundle is committed on purpose (regression check, docs/decisions.md D9)
+!v1_frozen/models/
+!v1_frozen/models/*.pkl
 
 # pipeline artifacts — raw data is versioned with DVC, not git
 artifacts/data_ingestion/
@@ -34,3 +37,16 @@ mlartifacts/
 # OS
 .DS_Store
 Thumbs.db
+
+# coverage output
+.coverage
+coverage.xml
+
+# v2 streaming inputs derived from raw data (rebuild with v2/streaming/prepare_replay.py)
+v2/streaming/data/
+
+# terraform working files
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl

@@ -1,0 +1,83 @@
+# Streaming stack, v2 (docs/decisions.md D14) — local only, ~4 GB RAM
+#
+# Plain English: a local Kafka (the message queue payments arrive on), a
+# two-container Flink cluster (the stream processor that scores them), and a
+# tools container that replays the test payments and checks the answers.
+# Kept separate from the Airflow stack on purpose: both together do not fit in
+# this machine's Docker memory (stop Airflow before starting this).
+#
+# Usage (from the repository root):
+#   python v2/streaming/prepare_replay.py        # needs data/creditcard.csv (DVC)
+#   bash v2/streaming/run_stream.sh run-1000 1000 0.01 0.005 20
+name: fraud-v2-stream
+
+x-flink-common: &flink-common
+  image: fraud-v2-flink:1.20.0
+  build: ./flink
+  volumes:
+    - ./job:/opt/job:ro
+    - ../../src/frauddetection/inference.py:/opt/src/inference.py:ro
+    - ../../dashboard/assets:/opt/model:ro
+    - checkpoints:/checkpoints
+
+services:
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
+    mem_limit: 1g
+
+  jobmanager:
+    <<: *flink-common
+    command: jobmanager
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        jobmanager.memory.process.size: 900m
+        parallelism.default: 1
+        state.backend.type: hashmap
+        state.checkpoints.dir: file:///checkpoints
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: 10
+        restart-strategy.fixed-delay.delay: 5 s
+    mem_limit: 1g
+
+  taskmanager:
+    <<: *flink-common
+    command: taskmanager
+    depends_on: [jobmanager]
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 1
+        taskmanager.memory.process.size: 1800m
+        taskmanager.memory.task.off-heap.size: 128m
+        state.backend.type: hashmap
+        state.checkpoints.dir: file:///checkpoints
+    mem_limit: 2g
+
+  tools:
+    image: fraud-v2-stream-tools:1
+    build: ./tools
+    command: sleep infinity
+    volumes:
+      - .:/work
+    mem_limit: 768m
+    depends_on: [kafka]
+
+volumes:
+  checkpoints:

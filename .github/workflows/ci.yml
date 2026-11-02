@@ -1,25 +1,118 @@
+# CI for fraud-detection-ml (v2, docs/decisions.md D12)
+# No secrets and no paid services: everything runs on the GitHub-hosted runner
+# from files committed to the repository (v1_frozen/ holds the v1 baseline).
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  lint:
+    name: Lint (new v2 code only)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - run: pip install ruff==0.14.4
+      # v1 code is frozen and not linted; ruff config lives in pyproject.toml
+      - run: ruff check v2 tests/v2 --output-format github
 
-      - name: Install dependencies
-        run: pip install -r dashboard/requirements.txt pytest
-
-      - name: Run tests
-        run: pytest tests -v
-
+  test:
+    name: Tests + coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: v2/ci/requirements-v1-regression.txt
+      - name: Install pinned v1 environment + test tools
+        run: pip install -r v2/ci/requirements-v1-regression.txt pytest==9.1.1 pytest-cov==7.0.0
+      - name: Run tests with coverage
+        run: |
+          pytest tests -v --cov --cov-report=term --cov-report=xml
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          root = ET.parse("coverage.xml").getroot()
+          print(f"### Coverage: {float(root.get('line-rate')) * 100:.0f}% of lines "
+                f"({root.get('lines-covered')}/{root.get('lines-valid')}) in src/frauddetection + v2")
+          EOF
       - name: Dashboard source parses
         run: python -c "import ast, pathlib; ast.parse(pathlib.Path('dashboard/app.py').read_text(encoding='utf-8'))"
+
+  v1-regression:
+    name: v1 regression check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: v2/ci/requirements-v1-regression.txt
+      - run: pip install -r v2/ci/requirements-v1-regression.txt
+      # fails if any frozen file or any number in evaluation_results.json changes
+      - run: python v2/regression/check_v1.py
+
+  docker-api:
+    name: Docker build + smoke test (BentoML API, v2)
+    runs-on: ubuntu-latest
+    needs: [test, v1-regression]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: v2/ci/requirements-v1-regression.txt
+      - name: Install pinned environment + BentoML
+        run: pip install -r v2/ci/requirements-v1-regression.txt bentoml==1.4.39 prometheus-client
+      - name: Register the frozen v1 model (hash-checked)
+        run: python v2/ci/register_v1_model.py
+      - name: Build the Bento
+        # v2 API = v1 model and decisions + service metrics + HTTP 400 for bad input (D13)
+        run: bentoml build -f v2/serving/bentofile.yaml . --output tag > bento_tag.txt && cat bento_tag.txt
+      - name: Build the Docker image
+        run: bentoml containerize "$(tail -n 1 bento_tag.txt | sed 's/^__tag__://')" -t fraud-api:ci
+      - name: Run the container and smoke test it
+        run: |
+          docker run -d --name fraud-api -p 3000:3000 fraud-api:ci
+          python v2/ci/smoke_test_api.py http://127.0.0.1:3000 --v2
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs fraud-api || true
+
+  terraform:
+    name: Terraform validate + offline plan (designed only, never applied)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2/infra/terraform
+    env:
+      # mock keys: offline_plan=true skips every AWS lookup, so no account is used
+      # and nothing can be created. There is no apply step anywhere (D15).
+      AWS_ACCESS_KEY_ID: mock
+      AWS_SECRET_ACCESS_KEY: mock
+      TF_IN_AUTOMATION: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform fmt -check -diff
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+      - run: terraform plan -input=false -refresh=false -lock=false -var offline_plan=true -no-color

@@ -1,0 +1,70 @@
+{
+  "name": "faults-1000",
+  "parity_passed": true,
+  "tolerances": {
+    "features_abs_or_rel": 1e-09,
+    "score_abs": 1e-06,
+    "decision_flips": 0
+  },
+  "producer": {
+    "rate_target": 1000.0,
+    "achieved_send_rate": 1000.0,
+    "events_unique": 42821,
+    "messages_sent": 43209,
+    "send_seconds": 43.21
+  },
+  "faults_injected": {
+    "duplicates": 388,
+    "late_within_bound": 200,
+    "too_late": 20
+  },
+  "handled": {
+    "duplicate_inputs_dropped": 388,
+    "late_events_side_output": 20,
+    "too_late_all_routed_to_side_output": true,
+    "scored_unique": 42801,
+    "sink_repeats": 0,
+    "repeat_conflicts": 0
+  },
+  "test_rows": {
+    "total": 42722,
+    "scored": 42702,
+    "missing_unexpected": 0,
+    "strict_parity_rows": 40724,
+    "excluded_window_lost_too_late_event": 1979
+  },
+  "parity_strict": {
+    "Amount_log_max_abs_diff": 8.881784197001252e-16,
+    "Amount_log_rows_outside_tolerance": 0,
+    "rolling_std_amount_max_abs_diff": 1.6129320101754274e-11,
+    "rolling_std_amount_rows_outside_tolerance": 0,
+    "Hour_mismatches": 0,
+    "score_max_abs_diff": 9.313225746154785e-10,
+    "score_rows_outside_tolerance": 0,
+    "decision_flips": 0,
+    "declines": 76
+  },
+  "rows_after_too_late_events": {
+    "Amount_log_max_abs_diff": 8.881784197001252e-16,
+    "Amount_log_rows_outside_tolerance": 0,
+    "rolling_std_amount_max_abs_diff": 118.76191335076028,
+    "rolling_std_amount_rows_outside_tolerance": 1969,
+    "Hour_mismatches": 0,
+    "score_max_abs_diff": 0.0007473737932741642,
+    "score_rows_outside_tolerance": 32,
+    "decision_flips": 0,
+    "declines": 5
+  },
+  "end_to_end_latency_ms": {
+    "p50": 482.0,
+    "p95": 715.0,
+    "p99": 1749.0,
+    "max": 2181.0
+  },
+  "throughput_events_per_s": 982.4,
+  "scoring_batch_size": {
+    "median": 200.0,
+    "p95": 204.0,
+    "max": 215
+  }
+}

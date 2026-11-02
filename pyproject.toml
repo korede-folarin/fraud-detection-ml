@@ -12,3 +12,14 @@ description = "Banking ML Risk Pipeline — Fraud Detection"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+# v2: lint applies to new code only (CI runs `ruff check v2 tests/v2`), see docs/decisions.md D12
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.coverage.run]
+source = ["src/frauddetection", "v2"]
+omit = ["*/__init__.py"]

@@ -1,0 +1,60 @@
+{
+  "name": "restart-500",
+  "parity_passed": true,
+  "tolerances": {
+    "features_abs_or_rel": 1e-09,
+    "score_abs": 1e-06,
+    "decision_flips": 0
+  },
+  "producer": {
+    "rate_target": 500.0,
+    "achieved_send_rate": 500.0,
+    "events_unique": 42821,
+    "messages_sent": 43278,
+    "send_seconds": 86.55
+  },
+  "faults_injected": {
+    "duplicates": 457,
+    "late_within_bound": 207,
+    "too_late": 0
+  },
+  "handled": {
+    "duplicate_inputs_dropped": 476,
+    "late_events_side_output": 0,
+    "too_late_all_routed_to_side_output": true,
+    "scored_unique": 42821,
+    "sink_repeats": 1776,
+    "repeat_conflicts": 0
+  },
+  "test_rows": {
+    "total": 42722,
+    "scored": 42722,
+    "missing_unexpected": 0,
+    "strict_parity_rows": 42722,
+    "excluded_window_lost_too_late_event": 0
+  },
+  "parity_strict": {
+    "Amount_log_max_abs_diff": 8.881784197001252e-16,
+    "Amount_log_rows_outside_tolerance": 0,
+    "rolling_std_amount_max_abs_diff": 1.6129320101754274e-11,
+    "rolling_std_amount_rows_outside_tolerance": 0,
+    "Hour_mismatches": 0,
+    "score_max_abs_diff": 9.313225746154785e-10,
+    "score_rows_outside_tolerance": 0,
+    "decision_flips": 0,
+    "declines": 81
+  },
+  "rows_after_too_late_events": {},
+  "end_to_end_latency_ms": {
+    "p50": 705.0,
+    "p95": 19097.0,
+    "p99": 21950.4,
+    "max": 22465.0
+  },
+  "throughput_events_per_s": 492.2,
+  "scoring_batch_size": {
+    "median": 200.0,
+    "p95": 204.0,
+    "max": 208
+  }
+}

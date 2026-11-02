@@ -1,0 +1,56 @@
+# Service monitoring stack, v2 (docs/decisions.md D13) — local only, ~1.5 GB RAM
+#
+# Plain English: runs the v2 fraud API next to Prometheus (collects its numbers
+# every 5 s) and Grafana (draws them). Data drift (PSI) is still watched on the
+# Streamlit dashboard's Drift page; this stack watches the service itself.
+#
+# Build the API image first (from the repository root):
+#   python v2/ci/register_v1_model.py
+#   bentoml build -f v2/serving/bentofile.yaml .
+#   bentoml containerize fraud_detection_v2:latest -t fraud-api:v2-local
+# Then:
+#   docker compose -f v2/monitoring/docker-compose.yml up -d
+#   python v2/monitoring/load.py --rps 50 --seconds 120
+# Grafana: http://localhost:3300 (anonymous read-only view; the admin account
+# keeps Grafana's own first-login password flow, nothing is set here)
+name: fraud-v2-monitoring
+
+services:
+  api:
+    image: fraud-api:v2-local
+    ports:
+      - "127.0.0.1:3000:3000"
+    mem_limit: 1g
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.4.2
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    mem_limit: 256m
+    depends_on: [api]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:12.0.2
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: light
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/fraud-api.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3300:3000"
+    mem_limit: 256m
+    depends_on: [prometheus]
+    restart: unless-stopped

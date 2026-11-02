@@ -1,0 +1,29 @@
+# v2 API with service metrics (docs/decisions.md D13)
+# build from the repository root:
+#   bentoml build -f v2/serving/bentofile.yaml .
+service: "v2.serving.service:FraudDetectionV2"
+
+labels:
+  project: fraud-detection-ml
+  version: v2
+  baseline: v1.0-evaluated
+
+include:
+  - "v2/__init__.py"
+  - "v2/serving/__init__.py"
+  - "v2/serving/service.py"
+  - "src/frauddetection/__init__.py"
+  - "src/frauddetection/inference.py"
+
+python:
+  # pinned to the v1 environment (v1_frozen/MANIFEST.json) so scores match v1 exactly
+  packages:
+    - numpy==2.4.4
+    - pandas==2.3.3
+    - scikit-learn==1.8.0
+    - xgboost==3.2.0
+    - pydantic>=2.7
+    - prometheus-client>=0.20
+
+docker:
+  python_version: "3.11"
