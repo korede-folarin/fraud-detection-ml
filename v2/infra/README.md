@@ -36,7 +36,7 @@ These are on-demand London prices from the **AWS Price List API**, fetched by `c
 | NAT gateway, data transfer out, Terraform state bucket | not priced | **no** |
 
 **Design trade-offs, stated plainly:**
-- **No NAT gateway, no load balancer.** This keeps the demo at about $25 a month instead of about $85. The cost is that the task has a public IP, there is no TLS, and there is no zero-downtime rolling deploy behind a stable address. A production version would add an ALB with HTTPS and private subnets.
+- **No NAT gateway, no load balancer.** This keeps the demo at about $25 a month. The load balancer alone would add $25.45 (about $51 in total), and the NAT gateway was not priced, so there is no full production total here. The cost is that the task has a public IP, there is no TLS, and there is no zero-downtime rolling deploy behind a stable address. A production version would add an ALB with HTTPS and private subnets.
 - **No remote state backend.** Creating its S3 bucket and lock would be the first real resource.
 
 ## How it is checked without deploying
