@@ -20,6 +20,7 @@ Status labels: **running**, **tested locally**, **designed only** (see `docs/dec
   - `v2/ci/smoke_test_api.py`: checks a running API against the published demo.
 - New tests in `tests/v2/` (gate rules, v1 regression). Ruff and coverage settings are in `pyproject.toml`.
 - Coverage: **25%** (see D12 for the breakdown).
+- Fixed the first GitHub CI failure: the regression check now hashes text files with normalised line endings, so Windows and Linux agree (D17).
 
 ### Step 2: service monitoring (D13)
 - `v2/serving/`: a v2 BentoML API with the same model and decisions as v1. It adds Prometheus metrics (decision mix, score distribution, model + SHAP time, rejected inputs, model info) and returns HTTP 400 for bad input. *Tested locally.*

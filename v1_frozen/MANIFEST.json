@@ -5,7 +5,7 @@
   "dataset_version": "ulb-creditcard@md5:e90efcb83d69faf99fcab8b0255024de",
   "evaluation_results": {
     "path": "artifacts/model_evaluation/evaluation_results.json",
-    "sha256": "e61272f07b3a9cc279786c5de53bcc1dd97f6a093a62ac67fdcc01957727f5b7"
+    "sha256": "5fa3db2b9c3158e9b45468b78fc261dd1af4807df5ef7f6076de1a0a16593462"
   },
   "mlflow": {
     "tracking_uri": "https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow",

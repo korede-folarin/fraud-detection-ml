@@ -207,3 +207,10 @@ deployed).
   - The streaming stack needed that memory with Airflow stopped, and an earlier Flink stack on this machine had been killed with exit code 137.
   - A kind cluster plus loading the 2.7 GB API image would only fit with everything else stopped. It would add a deployment format, not new evidence about the model or the service.
 - **Next:** if wanted, use Docker Desktop's built-in Kubernetes instead of kind (no extra install), with the Airflow stacks stopped.
+
+### D17. Regression check hashes text files with normalised line endings · 2026-11-03 · tested locally
+- **Finding:** the first two CI runs on GitHub failed the v1 regression check and the test job. The freeze manifest (D8) had recorded the SHA-256 of `evaluation_results.json` as checked out on Windows, with CRLF line endings. GitHub's Linux runner checks out the same file with LF endings, so its hash differed and the check reported "evaluation_results.json changed".
+- **Why local testing missed it:** the clean-container test in D12 used a clone made on Windows, so it saw CRLF too.
+- **Decision:** hash text files with line endings normalised to LF (`text_sha256` in `check_v1.py` and `build_v1_bundle.py`), and record the LF hash in `v1_frozen/MANIFEST.json`. That is the hash of the content git stores, so it is the same on every OS. Binary files (models, parquet) are still hashed byte for byte.
+- **What did not change:** no v1 file and no v1 number. Only the manifest's recorded hash changed, from `e61272f0…` (CRLF) to `5fa3db2b…` (LF, the git blob).
+- **Evidence:** the check passes on Windows (CRLF working tree) and on a fresh Linux clone (LF) in `python:3.11-slim`, where all 29 tests pass too.

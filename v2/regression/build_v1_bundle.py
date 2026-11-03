@@ -56,6 +56,11 @@ def sha256(path):
     return h.hexdigest()
 
 
+def text_sha256(path):
+    """SHA-256 with line endings normalised to LF, matching check_v1.py (D17)"""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def main():
     (OUT / "models").mkdir(parents=True, exist_ok=True)
     (OUT / "data").mkdir(parents=True, exist_ok=True)
@@ -91,7 +96,7 @@ def main():
         "dataset_version": f"ulb-creditcard@md5:{dvc_md5}",
         "evaluation_results": {
             "path": "artifacts/model_evaluation/evaluation_results.json",
-            "sha256": sha256(ROOT / "artifacts" / "model_evaluation" / "evaluation_results.json"),
+            "sha256": text_sha256(ROOT / "artifacts" / "model_evaluation" / "evaluation_results.json"),
         },
         "mlflow": {
             "tracking_uri": "https://dagshub.com/korede-folarin/fraud-detection-ml.mlflow",

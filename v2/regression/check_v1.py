@@ -8,7 +8,8 @@ sets with the frozen v1 models and confirms every number in
 evaluation_results.json comes out identical.
 
 Technical: two layers. (1) Integrity — SHA-256 of every file in v1_frozen/
-and of evaluation_results.json must match v1_frozen/MANIFEST.json.
+and of evaluation_results.json (line endings normalised to LF) must match
+v1_frozen/MANIFEST.json.
 (2) Reproduction — recompute all metrics with v1's own ModelEvaluation
 methods (imported, not copied) and compare to the committed JSON exactly.
 Exact comparison is possible because v1 rounds every metric (4 dp, thresholds
@@ -50,6 +51,12 @@ def sha256(path):
     return h.hexdigest()
 
 
+def text_sha256(path):
+    """SHA-256 of a text file with line endings normalised to LF, so Windows
+    (CRLF checkout) and Linux CI (LF checkout) agree on the same content (D17)"""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def check_integrity(manifest):
     problems = []
     for name, digest in manifest["files"].items():
@@ -58,7 +65,7 @@ def check_integrity(manifest):
             problems.append(f"missing frozen file: v1_frozen/{name}")
         elif sha256(path) != digest:
             problems.append(f"frozen file changed: v1_frozen/{name}")
-    if sha256(RESULTS) != manifest["evaluation_results"]["sha256"]:
+    if text_sha256(RESULTS) != manifest["evaluation_results"]["sha256"]:
         problems.append("artifacts/model_evaluation/evaluation_results.json changed")
     return problems
 
